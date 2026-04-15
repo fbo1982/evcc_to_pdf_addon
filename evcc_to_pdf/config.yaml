@@ -1,13 +1,13 @@
 name: "EVCC to PDF"
-description: "EVCC Abrechnung als PDF"
-version: "1.0.1"
+description: "EVCC Abrechnung"
+version: "0.2.1"
 slug: "evcc_to_pdf"
 init: false
+startup: services
+
 arch:
-  - aarch64
   - amd64
-  - armv7
-  - i386
+  - aarch64
 
 map:
   - type: share
