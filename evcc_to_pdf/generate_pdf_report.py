@@ -1,12 +1,28 @@
-import os
+import json
 from pathlib import Path
-import requests
-import pandas as pd
 
-EVCC_URL = os.getenv("EVCC_URL", "").rstrip("/")
-EVCC_PASSWORD = os.getenv("EVCC_PASSWORD", "")
-GRID_PRICE = float(os.getenv("GRID_PRICE", "0"))
-SELECTED_VEHICLES = [v.strip() for v in os.getenv("SELECTED_VEHICLES", "").split(",") if v.strip()]
+import pandas as pd
+import requests
+
+
+def load_options() -> dict:
+    options_file = Path("/data/options.json")
+    if not options_file.exists():
+        raise FileNotFoundError("options.json unter /data nicht gefunden")
+
+    with options_file.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+OPTIONS = load_options()
+
+EVCC_URL = str(OPTIONS.get("evcc_url", "")).rstrip("/")
+EVCC_PASSWORD = str(OPTIONS.get("evcc_password", ""))
+GRID_PRICE = float(OPTIONS.get("grid_price", 0))
+SELECTED_VEHICLES = [
+    v.strip() for v in str(OPTIONS.get("selected_vehicles", "")).split(",") if v.strip()
+]
+
 
 def get_sessions():
     if not EVCC_URL:
@@ -17,9 +33,10 @@ def get_sessions():
     response.raise_for_status()
 
     data = response.json()
-    if "result" in data:
+    if isinstance(data, dict) and "result" in data:
         return data["result"]
     return data
+
 
 def main():
     sessions = get_sessions()
@@ -74,11 +91,12 @@ def main():
 
     output_dir = Path("/share/evcc-pdfs")
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / "evcc_abrrechnung.txt"
+    output_file = output_dir / "evcc_abrechnung.txt"
     output_file.write_text("\n".join(lines), encoding="utf-8")
 
     print("\n".join(lines))
     print(f"\nDatei geschrieben: {output_file}")
+
 
 if __name__ == "__main__":
     main()
