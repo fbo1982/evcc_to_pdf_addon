@@ -4,7 +4,7 @@
   <section class="card">
     <div class="card-head">
       <h2>Fahrzeuggruppen</h2>
-      <form method="post" action="{{ url_for('refresh_vehicles') }}">
+      <form method="post" action="{{ ingress_path }}/refresh_vehicles">
         <button type="submit">Fahrzeuge aktualisieren</button>
       </form>
     </div>
@@ -19,8 +19,8 @@
               <span class="muted">{{ group.vehicles|join(", ") }}</span>
             </div>
             <div class="group-actions">
-              <a class="button secondary" href="{{ url_for('groups_page', edit=group.id) }}">Bearbeiten</a>
-              <form method="post" onsubmit="return confirm('Gruppe wirklich löschen?')">
+              <a class="button secondary" href="{{ ingress_path }}/groups?edit={{ group.id }}">Bearbeiten</a>
+              <form method="post" action="{{ ingress_path }}/groups" onsubmit="return confirm('Gruppe wirklich löschen?')">
                 <input type="hidden" name="form_action" value="delete">
                 <input type="hidden" name="group_id" value="{{ group.id }}">
                 <button type="submit" class="danger">Löschen</button>
@@ -36,7 +36,7 @@
 
   <section class="card">
     <h2>{{ "Gruppe bearbeiten" if edit_group else "Neue Gruppe" }}</h2>
-    <form method="post" class="stack">
+    <form method="post" action="{{ ingress_path }}/groups" class="stack">
       <input type="hidden" name="group_id" value="{{ edit_group.id if edit_group else '' }}">
 
       <label>

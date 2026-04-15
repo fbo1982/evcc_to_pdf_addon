@@ -10,7 +10,7 @@
       <li><strong>EVCC URL:</strong> {{ settings.evcc.url or "nicht gesetzt" }}</li>
     </ul>
 
-    <form method="post" action="{{ url_for('refresh_vehicles') }}">
+    <form method="post" action="{{ ingress_path }}/refresh_vehicles">
       <button type="submit">Fahrzeuge aus EVCC laden</button>
     </form>
   </section>
