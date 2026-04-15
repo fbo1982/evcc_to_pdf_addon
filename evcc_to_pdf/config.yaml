@@ -1,0 +1,48 @@
+name: "EVCC to PDF"
+version: "0.3.0"
+slug: "evcc_to_pdf"
+description: "Erstellt EVCC-Ladeberichte als PDF mit Fahrzeugfilter und festem Netzstrompreis"
+url: "https://github.com/MaizeShark/evcc-to-PDF"
+arch:
+  - aarch64
+  - amd64
+  - armv7
+  - i386
+startup: services
+boot: manual
+init: false
+panel_icon: mdi:file-document-outline
+
+map:
+  - type: share
+    read_only: false
+
+options:
+  evcc_url: "http://evcc.local:7070"
+  evcc_password: ""
+  grid_price: 0.35
+  selected_vehicles: ""
+  smtp_server: ""
+  smtp_port: 587
+  sender_email: ""
+  sender_password: ""
+  recipient_email: ""
+  sender_name: "Max Mustermann"
+  sender_street: "Musterstraße 1"
+  sender_city: "12345 Musterstadt"
+  locale: "de_DE.UTF-8"
+
+schema:
+  evcc_url: str
+  evcc_password: password?
+  grid_price: float
+  selected_vehicles: str?
+  smtp_server: str?
+  smtp_port: int
+  sender_email: str?
+  sender_password: password?
+  recipient_email: str?
+  sender_name: str
+  sender_street: str
+  sender_city: str
+  locale: str

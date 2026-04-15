@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 12px; color: #222; }
+    .header { margin-bottom: 20px; }
+    .summary { margin: 18px 0; padding: 12px; border: 1px solid #ccc; border-radius: 6px; background: #f7f7f7; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: left; vertical-align: top; }
+    th { background: #efefef; }
+    .totals { margin-top: 18px; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>{{ sender.name }}</div>
+    <div>{{ sender.street }}</div>
+    <div>{{ sender.city }}</div>
+    <div style="margin-top: 12px;">Datum: {{ creation_date }}</div>
+  </div>
+
+  <h1>Ladekostenübersicht</h1>
+  <p>Zeitraum: {{ period }}</p>
+
+  <div class="summary">
+    <h3>Zusammenfassung</h3>
+    <p><strong>Fahrzeuge:</strong> {{ summary.selected_vehicles }}</p>
+    <p><strong>Netzstrompreis:</strong> {{ summary.grid_price }} €/kWh</p>
+    <p><strong>Gesamtenergie:</strong> {{ summary.total_energy }} kWh</p>
+    <p><strong>Gesamtbetrag:</strong> {{ summary.total_price }} €</p>
+    <p class="muted">Die einzelnen Ladevorgänge bleiben chronologisch sortiert.</p>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Startzeit</th>
+        <th>Endzeit</th>
+        <th>Ladepunkt</th>
+        <th>Fahrzeug</th>
+        <th>Energie (kWh)</th>
+        <th>Ladedauer</th>
+        <th>Preis (€)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for charge in charges %}
+      <tr>
+        <td>{{ charge['Start Time'] }}</td>
+        <td>{{ charge['End Time'] }}</td>
+        <td>{{ charge['Charging Point'] }}</td>
+        <td>{{ charge['Vehicle'] }}</td>
+        <td>{{ charge['Energy (kWh)'] }}</td>
+        <td>{{ charge['Charging Duration'] }}</td>
+        <td>{{ charge['Price'] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <p><strong>Gesamtenergie:</strong> {{ total_energy }} kWh</p>
+    <p><strong>Gesamtkosten:</strong> {{ total_price }} €</p>
+  </div>
+</body>
+</html>
