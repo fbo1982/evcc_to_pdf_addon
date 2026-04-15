@@ -2,7 +2,7 @@
 
 Schritt 1: Ingress-Weboberfläche für EVCC-Abrechnung.
 
-## Funktionen in Version 0.3.2
+## Funktionen in Version 0.3.3
 - Eigene Oberfläche in Home Assistant
 - EVCC-Verbindung speichern
 - Fahrzeuge aus EVCC laden
@@ -12,10 +12,9 @@ Schritt 1: Ingress-Weboberfläche für EVCC-Abrechnung.
 - Testbericht als TXT erzeugen
 - Bericht für Vormonat oder manuell gewählten Monat/Jahr erzeugen
 
-## Fixes in 0.3.2
+## Fixes in 0.3.3
 - Ingress-Navigation korrigiert
-- Statische Dateien/CSS über Ingress korrigiert
-- Robusteres Handling von gespeicherten Einstellungen
+- Static/CSS-Pfade korrigiert
 
 ## Noch nicht in Schritt 1
 - PDF-Erzeugung

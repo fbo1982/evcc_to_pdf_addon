@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{ title or "EVCC to PDF" }}</title>
-  <link rel="stylesheet" href="{{ request.script_root }}/static/style.css">
+  <link rel="stylesheet" href="{{ (request.environ.get('SCRIPT_NAME', '') or request.script_root or '') ~ '/static/style.css' }}">
 </head>
 <body>
   <header class="topbar">

@@ -10,10 +10,12 @@ import requests
 from flask import Flask, flash, redirect, render_template, request, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+
 APP_PORT = 8099
 SETTINGS_DIR = Path("/addon_config/evcc_to_pdf")
 SETTINGS_FILE = SETTINGS_DIR / "settings.json"
 REPORT_DIR = Path("/share/evcc-pdfs")
+
 
 DEFAULT_SETTINGS = {
     "evcc": {
@@ -46,16 +48,21 @@ DEFAULT_SETTINGS = {
     "groups": [],
 }
 
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "evcc-to-pdf-dev-secret")
-app.wsgi_app = ProxyFix(app.wsgi_app, x_prefix=1)
-app.config["APPLICATION_ROOT"] = "/"
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_prefix=1)
 
 
 @app.before_request
-def fix_ingress_prefix() -> None:
-    if "X-Ingress-Path" in request.headers:
-        app.config["APPLICATION_ROOT"] = request.headers["X-Ingress-Path"]
+def fix_ingress():
+    prefix = request.headers.get("X-Ingress-Path", "")
+    if prefix:
+        script_name = prefix.rstrip("/")
+        request.environ["SCRIPT_NAME"] = script_name
+        path_info = request.environ.get("PATH_INFO", "")
+        if path_info.startswith(script_name):
+            request.environ["PATH_INFO"] = path_info[len(script_name):] or "/"
 
 
 def ensure_dirs() -> None:
@@ -74,18 +81,16 @@ def load_settings() -> dict:
         loaded = json.load(f)
 
     settings = deepcopy(DEFAULT_SETTINGS)
+    settings.update(loaded)
 
-    for key, value in loaded.items():
-        if key in ("evcc", "sender", "smtp", "scheduler", "reporting") and isinstance(value, dict):
-            merged = deepcopy(DEFAULT_SETTINGS[key])
-            merged.update(value)
-            settings[key] = merged
-        else:
-            settings[key] = value
+    for section in ("evcc", "sender", "smtp", "scheduler", "reporting"):
+        merged = deepcopy(DEFAULT_SETTINGS[section])
+        merged.update(loaded.get(section, {}))
+        settings[section] = merged
 
-    if not isinstance(settings.get("groups"), list):
+    if "groups" not in settings or not isinstance(settings["groups"], list):
         settings["groups"] = []
-    if not isinstance(settings.get("cached_vehicles"), list):
+    if "cached_vehicles" not in settings or not isinstance(settings["cached_vehicles"], list):
         settings["cached_vehicles"] = []
 
     return settings
@@ -117,7 +122,11 @@ def evcc_session(settings: dict) -> requests.Session:
 
     if password:
         login_url = f"{base_url}/api/auth/login"
-        response = session.post(login_url, json={"password": password}, timeout=15)
+        response = session.post(
+            login_url,
+            json={"password": password},
+            timeout=15,
+        )
         response.raise_for_status()
 
     return session
@@ -130,7 +139,10 @@ def fetch_sessions(settings: dict) -> list[dict]:
     response.raise_for_status()
 
     data = response.json()
-    result = data["result"] if isinstance(data, dict) and "result" in data else data
+    if isinstance(data, dict) and "result" in data:
+        result = data["result"]
+    else:
+        result = data
 
     if not isinstance(result, list):
         raise ValueError("Unerwartete Antwort von EVCC bei /api/sessions")
@@ -153,7 +165,12 @@ def fetch_available_vehicles(settings: dict) -> list[str]:
     return sorted(vehicles, key=lambda x: x.lower())
 
 
-def report_rows_for_group(settings: dict, group: dict, year: int, month: int) -> tuple[pd.DataFrame, dict]:
+def report_rows_for_group(
+    settings: dict,
+    group: dict,
+    year: int,
+    month: int,
+) -> tuple[pd.DataFrame, dict]:
     sessions = fetch_sessions(settings)
     df = pd.DataFrame(sessions)
 
@@ -162,11 +179,13 @@ def report_rows_for_group(settings: dict, group: dict, year: int, month: int) ->
 
     if "created" not in df.columns:
         raise ValueError("Spalte 'created' fehlt in den EVCC-Sessions.")
+
     if "chargedEnergy" not in df.columns:
         raise ValueError("Spalte 'chargedEnergy' fehlt in den EVCC-Sessions.")
 
     df["created"] = pd.to_datetime(df["created"], errors="coerce", utc=True).dt.tz_localize(None)
     df = df.dropna(subset=["created"])
+
     df = df[(df["created"].dt.year == year) & (df["created"].dt.month == month)]
 
     selected_vehicles = group.get("vehicles", [])
@@ -178,15 +197,11 @@ def report_rows_for_group(settings: dict, group: dict, year: int, month: int) ->
         raise ValueError("Keine Sessions für die Auswahl gefunden.")
 
     df["chargedEnergy"] = pd.to_numeric(df["chargedEnergy"], errors="coerce").fillna(0)
-    raw_override = group.get("grid_price_override")
-    grid_price = 0.0
-    if raw_override not in (None, ""):
-        try:
-            grid_price = float(str(raw_override).replace(",", "."))
-        except ValueError:
-            grid_price = 0.0
-    if not grid_price:
-        grid_price = float(settings.get("reporting", {}).get("grid_price", 0) or 0)
+    raw_group_price = str(group.get("grid_price_override", "")).strip().replace(",", ".")
+    try:
+        grid_price = float(raw_group_price) if raw_group_price else float(settings["reporting"].get("grid_price", 0) or 0)
+    except ValueError:
+        grid_price = float(settings["reporting"].get("grid_price", 0) or 0)
 
     df["price"] = (df["chargedEnergy"] * grid_price).round(2)
     df = df.sort_values("created", ascending=True)
@@ -211,25 +226,27 @@ def write_txt_report(settings: dict, group: dict, year: int, month: int) -> Path
     df, summary = report_rows_for_group(settings, group, year, month)
 
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    safe_group = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in group["name"]).strip("_") or "gruppe"
+    safe_group = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in group["name"]).strip("_")
+    if not safe_group:
+        safe_group = "gruppe"
+
     output_file = REPORT_DIR / f"evcc_report_{year:04d}-{month:02d}_{safe_group}.txt"
 
-    lines = [
-        "EVCC Abrechnung",
-        "================",
-        "",
-        f"Gruppe: {summary['group_name']}",
-        f"Empfänger: {summary['recipient_name']}",
-        f"Firma: {summary['recipient_company']}",
-        f"E-Mail: {summary['recipient_email']}",
-        "",
-        f"Monat: {year:04d}-{month:02d}",
-        f"Fahrzeuge: {', '.join(summary['vehicles']) if summary['vehicles'] else 'Alle'}",
-        f"Netzstrompreis: {summary['grid_price']:.2f} €/kWh",
-        "",
-        "Chronologische Ladeliste:",
-        "",
-    ]
+    lines = []
+    lines.append("EVCC Abrechnung")
+    lines.append("================")
+    lines.append("")
+    lines.append(f"Gruppe: {summary['group_name']}")
+    lines.append(f"Empfänger: {summary['recipient_name']}")
+    lines.append(f"Firma: {summary['recipient_company']}")
+    lines.append(f"E-Mail: {summary['recipient_email']}")
+    lines.append("")
+    lines.append(f"Monat: {year:04d}-{month:02d}")
+    lines.append(f"Fahrzeuge: {', '.join(summary['vehicles']) if summary['vehicles'] else 'Alle'}")
+    lines.append(f"Netzstrompreis: {summary['grid_price']:.2f} €/kWh")
+    lines.append("")
+    lines.append("Chronologische Ladeliste:")
+    lines.append("")
 
     for _, row in df.iterrows():
         created_str = row["created"].strftime("%Y-%m-%d %H:%M")
@@ -238,12 +255,10 @@ def write_txt_report(settings: dict, group: dict, year: int, month: int) -> Path
         price = float(row.get("price", 0))
         lines.append(f"{created_str} | {vehicle} | {energy:.2f} kWh | {price:.2f} €")
 
-    lines.extend([
-        "",
-        f"Anzahl Ladevorgänge: {summary['row_count']}",
-        f"Gesamtenergie: {summary['total_energy']:.2f} kWh",
-        f"Gesamtbetrag: {summary['total_price']:.2f} €",
-    ])
+    lines.append("")
+    lines.append(f"Anzahl Ladevorgänge: {summary['row_count']}")
+    lines.append(f"Gesamtenergie: {summary['total_energy']:.2f} kWh")
+    lines.append(f"Gesamtbetrag: {summary['total_price']:.2f} €")
 
     output_file.write_text("\n".join(lines), encoding="utf-8")
     return output_file
@@ -269,7 +284,7 @@ def inject_common():
 @app.route("/")
 def dashboard():
     settings = load_settings()
-    return render_template("dashboard.html", settings=settings)
+    return render_template("dashboard.html", settings=settings, title="Dashboard")
 
 
 @app.route("/settings", methods=["GET", "POST"])
@@ -312,7 +327,7 @@ def settings_page():
         flash("Einstellungen gespeichert.", "success")
         return redirect(url_for("settings_page"))
 
-    return render_template("settings.html", settings=settings)
+    return render_template("settings.html", settings=settings, title="Einstellungen")
 
 
 @app.route("/refresh_vehicles", methods=["POST"])
@@ -381,7 +396,12 @@ def groups_page():
     edit_group_id = request.args.get("edit", "").strip()
     edit_group = find_group(settings, edit_group_id) if edit_group_id else None
 
-    return render_template("groups.html", settings=settings, edit_group=edit_group)
+    return render_template(
+        "groups.html",
+        settings=settings,
+        edit_group=edit_group,
+        title="Gruppen",
+    )
 
 
 @app.route("/report", methods=["GET", "POST"])
@@ -424,6 +444,7 @@ def report_page():
         years=years,
         months=months,
         generated_file=generated_file,
+        title="Testbericht",
     )
 
 

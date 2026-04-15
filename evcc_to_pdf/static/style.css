@@ -54,9 +54,13 @@ body {
   text-decoration: none;
 }
 
-.nav a:hover { color: var(--accent); }
+.nav a:hover {
+  color: var(--accent);
+}
 
-main.container { padding: 24px 0 40px; }
+main.container {
+  padding: 24px 0 40px;
+}
 
 .card {
   background: var(--bg-card);
@@ -74,17 +78,29 @@ main.container { padding: 24px 0 40px; }
   flex-wrap: wrap;
 }
 
-.grid { display: grid; gap: 20px; }
-
-.grid.two-col { grid-template-columns: 1.15fr 1fr; }
-
-@media (max-width: 900px) {
-  .grid.two-col { grid-template-columns: 1fr; }
+.grid {
+  display: grid;
+  gap: 20px;
 }
 
-.stats { padding-left: 18px; }
+.grid.two-col {
+  grid-template-columns: 1.15fr 1fr;
+}
 
-.stack { display: grid; gap: 16px; }
+@media (max-width: 900px) {
+  .grid.two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stats {
+  padding-left: 18px;
+}
+
+.stack {
+  display: grid;
+  gap: 16px;
+}
 
 .form-grid {
   display: grid;
@@ -93,12 +109,21 @@ main.container { padding: 24px 0 40px; }
 }
 
 @media (max-width: 700px) {
-  .form-grid { grid-template-columns: 1fr; }
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
-label, fieldset { display: grid; gap: 8px; }
+label,
+fieldset {
+  display: grid;
+  gap: 8px;
+}
 
-input, select, button, textarea {
+input,
+select,
+button,
+textarea {
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--bg-soft);
@@ -107,7 +132,8 @@ input, select, button, textarea {
   font: inherit;
 }
 
-button, .button {
+button,
+.button {
   background: var(--accent);
   color: #062032;
   font-weight: 700;
@@ -154,7 +180,9 @@ button.danger {
 }
 
 @media (max-width: 700px) {
-  .checkbox-grid { grid-template-columns: 1fr; }
+  .checkbox-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .group-list {
@@ -190,10 +218,17 @@ button.danger {
   border: 1px solid var(--border);
 }
 
-.flash-success { background: rgba(20, 83, 45, 0.45); }
-.flash-error { background: rgba(127, 29, 29, 0.45); }
+.flash-success {
+  background: rgba(20, 83, 45, 0.45);
+}
 
-.muted { color: var(--muted); }
+.flash-error {
+  background: rgba(127, 29, 29, 0.45);
+}
+
+.muted {
+  color: var(--muted);
+}
 
 .chips {
   display: flex;
