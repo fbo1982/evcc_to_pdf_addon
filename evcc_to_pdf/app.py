@@ -13,6 +13,10 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 APP_PORT = 8099
 SETTINGS_DIR = Path("/addon_config/evcc_to_pdf")
 SETTINGS_FILE = SETTINGS_DIR / "settings.json"
+LEGACY_SETTINGS_FILES = [
+    Path("/config/evcc_to_pdf/settings.json"),
+    Path("/data/options.json"),
+]
 REPORT_DIR = Path("/share/evcc-pdfs")
 
 DEFAULT_SETTINGS = {
@@ -29,76 +33,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "evcc-to-pdf-dev-secret")
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-def ensure_dirs() -> None:
-    SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
-def load_settings() -> dict:
-    ensure_dirs()
-    if not SETTINGS_FILE.exists():
-        settings = deepcopy(DEFAULT_SETTINGS)
-        save_settings(settings)
-        return settings
-    with SETTINGS_FILE.open("r", encoding="utf-8") as f:
-        loaded = json.load(f)
-
-    settings = deepcopy(DEFAULT_SETTINGS)
-    for k, v in loaded.items():
-        if k not in settings or not isinstance(settings[k], dict):
-            settings[k] = v
-
-    for section in ("evcc", "sender", "smtp", "scheduler", "reporting"):
-        merged = deepcopy(DEFAULT_SETTINGS[section])
-        merged.update(loaded.get(section, {}))
-        settings[section] = merged
-
-    settings["groups"] = loaded.get("groups", []) if isinstance(loaded.get("groups", []), list) else []
-    settings["cached_vehicles"] = loaded.get("cached_vehicles", []) if isinstance(loaded.get("cached_vehicles", []), list) else []
-    return settings
-
-def save_settings(settings: dict) -> None:
-    ensure_dirs()
-    with SETTINGS_FILE.open("w", encoding="utf-8") as f:
-        json.dump(settings, f, indent=2, ensure_ascii=False)
-
-def parse_bool(value: str | None) -> bool:
-    return str(value).lower() in {"1", "true", "on", "yes"}
-
-def get_previous_month() -> tuple[int, int]:
-    today = datetime.today().replace(day=1)
-    last_day_previous_month = today - timedelta(days=1)
-    return last_day_previous_month.year, last_day_previous_month.month
-
-def evcc_session(settings: dict) -> requests.Session:
-    session = requests.Session()
-    base_url = str(settings["evcc"].get("url", "")).rstrip("/")
-    password = str(settings["evcc"].get("password", ""))
-    if not base_url:
-        raise ValueError("EVCC-URL ist leer.")
-    if password:
-        response = session.post(
-            f"{base_url}/api/auth/login",
-            json={"password": password},
-            timeout=15,
-        )
-        response.raise_for_status()
-    return session
-
-def fetch_sessions(settings: dict) -> list[dict]:
-    base_url = str(settings["evcc"].get("url", "")).rstrip("/")
-    session = evcc_session(settings)
-    response = session.get(f"{base_url}/api/sessions", timeout=30)
-    response.raise_for_status()
-    data = response.json()
-    result = data["result"] if isinstance(data, dict) and "result" in data else data
-    if not isinstance(result, list):
-        raise ValueError("Unerwartete Antwort von EVCC bei /api/sessions")
-    return result
-
-def normalize_vehicle_entry(name: str, kind: str = "vehicle") -> dict:
-    icon = "🚗" if kind == "vehicle" else "💳"
-    label = "Fahrzeug" if kind == "vehicle" else "Ladekarte"
-    return {"name": name, "type": kind, "icon": icon, "label": label}
 
 
 def vehicle_entries_from_cache(settings: dict) -> list[dict]:
@@ -118,16 +53,15 @@ def fetch_available_vehicles(settings: dict) -> list[dict]:
     entries: dict[str, dict] = {}
 
     def add_entry(name: str, kind: str = "vehicle") -> None:
-        name = str(name).strip()
-        if not name:
+        normalized_name = extract_name(name)
+        if not normalized_name:
             return
-        current = entries.get(name)
+        current = entries.get(normalized_name)
         if current is None:
-            entries[name] = normalize_vehicle_entry(name, kind)
+            entries[normalized_name] = normalize_vehicle_entry(normalized_name, kind)
         elif current.get("type") != "vehicle" and kind == "vehicle":
-            entries[name] = normalize_vehicle_entry(name, kind)
+            entries[normalized_name] = normalize_vehicle_entry(normalized_name, kind)
 
-    # 1) Vollständige Liste aus dem EVCC-State lesen
     response = session.get(f"{base_url}/api/state", timeout=15)
     response.raise_for_status()
     data = response.json()
@@ -136,30 +70,42 @@ def fetch_available_vehicles(settings: dict) -> list[dict]:
     vehicles_data = result.get("vehicles", []) if isinstance(result, dict) else []
     if isinstance(vehicles_data, dict):
         vehicles_iter = vehicles_data.values()
-    else:
+    elif isinstance(vehicles_data, list):
         vehicles_iter = vehicles_data
+    else:
+        vehicles_iter = []
 
     for item in vehicles_iter:
-        if not isinstance(item, dict):
-            continue
-        name = item.get("title") or item.get("name") or item.get("vehicle")
-        if name:
-            add_entry(name, "vehicle")
+        if isinstance(item, dict):
+            add_entry(item.get("title") or item.get("name") or item.get("vehicle"), "vehicle")
+            # manche EVCC-Versionen haben identifiers / tokens / cards als Liste von Strings oder Dicts
+            for key in ("identifiers", "identifier", "cards", "rfid", "tokens"):
+                extra = item.get(key)
+                if isinstance(extra, list):
+                    for sub in extra:
+                        sub_name = extract_name(sub)
+                        if sub_name:
+                            add_entry(sub_name, "card")
+                else:
+                    sub_name = extract_name(extra)
+                    if sub_name:
+                        add_entry(sub_name, "card")
+        else:
+            add_entry(item, "vehicle")
 
-    # 2) Zusätzlich alle Session-Namen ergänzen (inkl. Ladekarten)
     try:
         sessions = fetch_sessions(settings)
         for item in sessions:
             if not isinstance(item, dict):
                 continue
-            vehicle = item.get("vehicle")
+            vehicle = extract_name(item.get("vehicle"))
             if vehicle:
-                kind = "card" if "ladekarte" in str(vehicle).lower() else "vehicle"
+                kind = "card" if "ladekarte" in vehicle.lower() else "vehicle"
                 add_entry(vehicle, kind)
     except Exception:
         pass
 
-    return sorted(entries.values(), key=lambda x: (x["type"], x["name"].lower()))
+    return sorted(entries.values(), key=lambda x: (0 if x["type"] == "vehicle" else 1, x["name"].lower()))
 
 def report_rows_for_group(settings: dict, group: dict, year: int, month: int) -> tuple[pd.DataFrame, dict]:
     sessions = fetch_sessions(settings)
@@ -318,7 +264,7 @@ def refresh_vehicles():
         settings["cached_vehicles"] = vehicles
         save_settings(settings)
         REPORT_DIR.mkdir(parents=True, exist_ok=True)
-        (REPORT_DIR / "available_vehicles.txt").write_text("\n".join(vehicles), encoding="utf-8")
+        (REPORT_DIR / "available_vehicles.txt").write_text("\n".join(v["name"] for v in vehicles), encoding="utf-8")
         flash(f"{len(vehicles)} Fahrzeuge geladen.", "success")
     except Exception as err:
         flash(f"Fahrzeuge konnten nicht geladen werden: {err}", "error")
