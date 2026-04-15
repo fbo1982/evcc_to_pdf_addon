@@ -30,10 +30,10 @@
 
 <section class="card">
   <h2>Geladene Fahrzeuge</h2>
-  {% if settings.cached_vehicles %}
+  {% if cached_vehicle_entries %}
     <div class="chips">
-      {% for vehicle in settings.cached_vehicles %}
-        <span class="chip">{{ vehicle }}</span>
+      {% for vehicle in cached_vehicle_entries %}
+        <span class="chip">{{ vehicle.icon }} {{ vehicle.name }}</span>
       {% endfor %}
     </div>
   {% else %}

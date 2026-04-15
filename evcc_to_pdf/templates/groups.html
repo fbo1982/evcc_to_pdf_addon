@@ -82,20 +82,40 @@
 
       <fieldset>
         <legend>Fahrzeuge</legend>
-        {% if settings.cached_vehicles %}
-          <div class="checkbox-grid">
-            {% for vehicle in settings.cached_vehicles %}
-              <label class="checkbox">
-                <input
-                  type="checkbox"
-                  name="vehicles"
-                  value="{{ vehicle }}"
-                  {% if edit_group and vehicle in edit_group.vehicles %}checked{% endif %}
-                >
-                <span>{{ vehicle }}</span>
-              </label>
-            {% endfor %}
-          </div>
+        {% if vehicle_entries or card_entries %}
+          {% if vehicle_entries %}
+            <div class="vehicle-section-title">🚗 Fahrzeuge</div>
+            <div class="checkbox-grid">
+              {% for vehicle in vehicle_entries %}
+                <label class="checkbox checkbox-pill">
+                  <input
+                    type="checkbox"
+                    name="vehicles"
+                    value="{{ vehicle.name }}"
+                    {% if edit_group and vehicle.name in edit_group.vehicles %}checked{% endif %}
+                  >
+                  <span>{{ vehicle.icon }} {{ vehicle.name }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if card_entries %}
+            <div class="vehicle-section-title">💳 Ladekarten</div>
+            <div class="checkbox-grid">
+              {% for vehicle in card_entries %}
+                <label class="checkbox checkbox-pill">
+                  <input
+                    type="checkbox"
+                    name="vehicles"
+                    value="{{ vehicle.name }}"
+                    {% if edit_group and vehicle.name in edit_group.vehicles %}checked{% endif %}
+                  >
+                  <span>{{ vehicle.icon }} {{ vehicle.name }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          {% endif %}
         {% else %}
           <p class="muted">Noch keine Fahrzeuge geladen. Erst auf „Fahrzeuge aktualisieren“ klicken.</p>
         {% endif %}

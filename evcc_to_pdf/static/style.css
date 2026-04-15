@@ -48,3 +48,17 @@ button.danger { background: #ef4444; color: white; }
 .muted { color: var(--muted); }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 999px; padding: 6px 10px; }
+
+
+.vehicle-section-title {
+  margin: 12px 0 10px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.checkbox-pill {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.02);
+}

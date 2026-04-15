@@ -95,17 +95,71 @@ def fetch_sessions(settings: dict) -> list[dict]:
         raise ValueError("Unerwartete Antwort von EVCC bei /api/sessions")
     return result
 
-def fetch_available_vehicles(settings: dict) -> list[str]:
-    sessions = fetch_sessions(settings)
-    vehicles = set()
-    for item in sessions:
-        vehicle = item.get("vehicle")
-        if vehicle is None:
+def normalize_vehicle_entry(name: str, kind: str = "vehicle") -> dict:
+    icon = "🚗" if kind == "vehicle" else "💳"
+    label = "Fahrzeug" if kind == "vehicle" else "Ladekarte"
+    return {"name": name, "type": kind, "icon": icon, "label": label}
+
+
+def vehicle_entries_from_cache(settings: dict) -> list[dict]:
+    entries = []
+    for item in settings.get("cached_vehicles", []):
+        if isinstance(item, str):
+            entries.append(normalize_vehicle_entry(item, "vehicle"))
+        elif isinstance(item, dict) and item.get("name"):
+            kind = item.get("type", "vehicle")
+            entries.append(normalize_vehicle_entry(str(item["name"]), kind))
+    return sorted(entries, key=lambda x: (x["type"], x["name"].lower()))
+
+
+def fetch_available_vehicles(settings: dict) -> list[dict]:
+    base_url = str(settings["evcc"].get("url", "")).rstrip("/")
+    session = evcc_session(settings)
+    entries: dict[str, dict] = {}
+
+    def add_entry(name: str, kind: str = "vehicle") -> None:
+        name = str(name).strip()
+        if not name:
+            return
+        current = entries.get(name)
+        if current is None:
+            entries[name] = normalize_vehicle_entry(name, kind)
+        elif current.get("type") != "vehicle" and kind == "vehicle":
+            entries[name] = normalize_vehicle_entry(name, kind)
+
+    # 1) Vollständige Liste aus dem EVCC-State lesen
+    response = session.get(f"{base_url}/api/state", timeout=15)
+    response.raise_for_status()
+    data = response.json()
+    result = data.get("result", data) if isinstance(data, dict) else {}
+
+    vehicles_data = result.get("vehicles", []) if isinstance(result, dict) else []
+    if isinstance(vehicles_data, dict):
+        vehicles_iter = vehicles_data.values()
+    else:
+        vehicles_iter = vehicles_data
+
+    for item in vehicles_iter:
+        if not isinstance(item, dict):
             continue
-        vehicle = str(vehicle).strip()
-        if vehicle:
-            vehicles.add(vehicle)
-    return sorted(vehicles, key=lambda x: x.lower())
+        name = item.get("title") or item.get("name") or item.get("vehicle")
+        if name:
+            add_entry(name, "vehicle")
+
+    # 2) Zusätzlich alle Session-Namen ergänzen (inkl. Ladekarten)
+    try:
+        sessions = fetch_sessions(settings)
+        for item in sessions:
+            if not isinstance(item, dict):
+                continue
+            vehicle = item.get("vehicle")
+            if vehicle:
+                kind = "card" if "ladekarte" in str(vehicle).lower() else "vehicle"
+                add_entry(vehicle, kind)
+    except Exception:
+        pass
+
+    return sorted(entries.values(), key=lambda x: (x["type"], x["name"].lower()))
 
 def report_rows_for_group(settings: dict, group: dict, year: int, month: int) -> tuple[pd.DataFrame, dict]:
     sessions = fetch_sessions(settings)
@@ -212,7 +266,9 @@ def inject_common():
 
 @app.route("/")
 def dashboard():
-    return render_template("dashboard.html", settings=load_settings(), title="Dashboard")
+    settings = load_settings()
+    cached_vehicle_entries = vehicle_entries_from_cache(settings)
+    return render_template("dashboard.html", settings=settings, cached_vehicle_entries=cached_vehicle_entries, title="Dashboard")
 
 @app.route("/settings", methods=["GET", "POST"])
 def settings_page():
