@@ -1,18 +1,10 @@
-ARG BUILD_FROM
-FROM $BUILD_FROM
-
-RUN apk add --no-cache \
-    python3 \
-    py3-pip
+FROM python:3.11-slim
 
 WORKDIR /app
 
 COPY requirements.txt /app/requirements.txt
-RUN pip3 install --no-cache-dir -r /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
-COPY run.sh /run.sh
 COPY generate_pdf_report.py /app/generate_pdf_report.py
 
-RUN chmod a+x /run.sh
-
-CMD [ "/run.sh" ]
+CMD ["python", "/app/generate_pdf_report.py"]
