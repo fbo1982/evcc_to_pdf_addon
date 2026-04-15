@@ -1,0 +1,40 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="grid">
+  <section class="card">
+    <h2>Status</h2>
+    <ul class="stats">
+      <li><strong>Gespeicherte Fahrzeuge:</strong> {{ settings.cached_vehicles|length }}</li>
+      <li><strong>Gruppen:</strong> {{ settings.groups|length }}</li>
+      <li><strong>Scheduler:</strong> {{ "aktiv" if settings.scheduler.enabled else "inaktiv" }}</li>
+      <li><strong>EVCC URL:</strong> {{ settings.evcc.url or "nicht gesetzt" }}</li>
+    </ul>
+    <form method="post" action="{{ url_for('refresh_vehicles') }}">
+      <button type="submit">Fahrzeuge aus EVCC laden</button>
+    </form>
+  </section>
+  <section class="card">
+    <h2>Was Schritt 1 schon kann</h2>
+    <ul>
+      <li>EVCC-Verbindung speichern</li>
+      <li>Fahrzeuge aus EVCC laden</li>
+      <li>Fahrzeuggruppen mit Empfängern pflegen</li>
+      <li>Sender- und SMTP-Daten speichern</li>
+      <li>Scheduler-Einstellungen speichern</li>
+      <li>TXT-Testbericht erzeugen</li>
+    </ul>
+  </section>
+</div>
+<section class="card">
+  <h2>Geladene Fahrzeuge</h2>
+  {% if settings.cached_vehicles %}
+    <div class="chips">
+      {% for vehicle in settings.cached_vehicles %}
+        <span class="chip">{{ vehicle }}</span>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p>Noch keine Fahrzeuge geladen.</p>
+  {% endif %}
+</section>
+{% endblock %}

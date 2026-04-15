@@ -1,19 +1,22 @@
-# EVCC to PDF for Home Assistant OS
+# EVCC to PDF
 
-Dieses Add-on baut auf dem Projekt `MaizeShark/evcc-to-PDF` auf und ergänzt:
+Schritt 1: Ingress-Weboberfläche für EVCC-Abrechnung.
 
-- Preisberechnung über festen Netzstrompreis
-- Filter auf ausgewählte Fahrzeuge
-- gemeinsame Abrechnung
-- chronologisch sortierte Liste der einzelnen Ladevorgänge
-- Zusammenfassung im PDF
+## Funktionen in Version 0.3.1
+- Eigene Oberfläche in Home Assistant
+- EVCC-Verbindung speichern
+- Fahrzeuge aus EVCC laden
+- Fahrzeuggruppen mit Empfängern verwalten
+- Sender- und SMTP-Daten speichern
+- Scheduler-Konfiguration speichern
+- Testbericht als TXT erzeugen
+- Bericht für Vormonat oder manuell gewählten Monat/Jahr erzeugen
 
-## Ausgabe
-Die PDFs werden nach `/share/evcc-pdfs` kopiert.
+## Noch nicht in Schritt 1
+- PDF-Erzeugung
+- echter Mailversand
+- echter laufender Scheduler
 
-## Konfiguration
-- `evcc_url`: URL zu deiner EVCC-Instanz
-- `evcc_password`: optionales EVCC-Passwort
-- `grid_price`: fixer Netzstrompreis in Euro pro kWh
-- `selected_vehicles`: kommagetrennte Fahrzeugnamen, z. B. `Tesla Model Y,VW ID.4`
-- SMTP-Felder: optional für den Mailversand
+## Speicherorte
+- Einstellungen: `/addon_config/evcc_to_pdf/settings.json`
+- Testberichte: `/share/evcc-pdfs`
