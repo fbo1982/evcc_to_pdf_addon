@@ -39,91 +39,52 @@
     <form method="post" action="{{ ingress_path }}/groups" class="stack">
       <input type="hidden" name="group_id" value="{{ edit_group.id if edit_group else '' }}">
 
-      <label>
-        <span>Gruppenname</span>
-        <input type="text" name="name" value="{{ edit_group.name if edit_group else '' }}" required>
-      </label>
-
-      <label>
-        <span>Empfängername</span>
-        <input type="text" name="recipient_name" value="{{ edit_group.recipient_name if edit_group else '' }}">
-      </label>
-
-      <label>
-        <span>Firma</span>
-        <input type="text" name="recipient_company" value="{{ edit_group.recipient_company if edit_group else '' }}">
-      </label>
-
-      <label>
-        <span>E-Mail</span>
-        <input type="email" name="recipient_email" value="{{ edit_group.recipient_email if edit_group else '' }}">
-      </label>
-
-      <label>
-        <span>Straße</span>
-        <input type="text" name="recipient_street" value="{{ edit_group.recipient_street if edit_group else '' }}">
-      </label>
+      <label><span>Gruppenname</span><input type="text" name="name" value="{{ edit_group.name if edit_group else '' }}" required></label>
+      <label><span>Empfängername</span><input type="text" name="recipient_name" value="{{ edit_group.recipient_name if edit_group else '' }}"></label>
+      <label><span>Firma</span><input type="text" name="recipient_company" value="{{ edit_group.recipient_company if edit_group else '' }}"></label>
+      <label><span>E-Mail</span><input type="email" name="recipient_email" value="{{ edit_group.recipient_email if edit_group else '' }}"></label>
+      <label><span>Straße</span><input type="text" name="recipient_street" value="{{ edit_group.recipient_street if edit_group else '' }}"></label>
 
       <div class="form-grid">
-        <label>
-          <span>PLZ</span>
-          <input type="text" name="recipient_zip" value="{{ edit_group.recipient_zip if edit_group else '' }}">
-        </label>
-        <label>
-          <span>Ort</span>
-          <input type="text" name="recipient_city" value="{{ edit_group.recipient_city if edit_group else '' }}">
-        </label>
+        <label><span>PLZ</span><input type="text" name="recipient_zip" value="{{ edit_group.recipient_zip if edit_group else '' }}"></label>
+        <label><span>Ort</span><input type="text" name="recipient_city" value="{{ edit_group.recipient_city if edit_group else '' }}"></label>
       </div>
 
-      <label>
-        <span>Optionaler Preis-Override €/kWh</span>
-        <input type="text" name="grid_price_override" value="{{ edit_group.grid_price_override if edit_group else '' }}">
-      </label>
+      <label><span>Optionaler Preis-Override €/kWh</span><input type="text" name="grid_price_override" value="{{ edit_group.grid_price_override if edit_group else '' }}"></label>
 
       <fieldset>
-        <legend>Fahrzeuge</legend>
-        {% if vehicle_entries or card_entries %}
-          {% if vehicle_entries %}
-            <div class="vehicle-section-title">🚗 Fahrzeuge</div>
-            <div class="checkbox-grid">
-              {% for vehicle in vehicle_entries %}
-                <label class="checkbox checkbox-pill">
-                  <input
-                    type="checkbox"
-                    name="vehicles"
-                    value="{{ vehicle.name }}"
-                    {% if edit_group and vehicle.name in edit_group.vehicles %}checked{% endif %}
-                  >
-                  <span>{{ vehicle.icon }} {{ vehicle.name }}</span>
-                </label>
-              {% endfor %}
-            </div>
-          {% endif %}
-
-          {% if card_entries %}
-            <div class="vehicle-section-title">💳 Ladekarten</div>
-            <div class="checkbox-grid">
-              {% for vehicle in card_entries %}
-                <label class="checkbox checkbox-pill">
-                  <input
-                    type="checkbox"
-                    name="vehicles"
-                    value="{{ vehicle.name }}"
-                    {% if edit_group and vehicle.name in edit_group.vehicles %}checked{% endif %}
-                  >
-                  <span>{{ vehicle.icon }} {{ vehicle.name }}</span>
-                </label>
-              {% endfor %}
-            </div>
-          {% endif %}
+        <legend>🚗 Fahrzeuge</legend>
+        {% if vehicle_entries %}
+          <div class="checkbox-grid">
+            {% for entry in vehicle_entries %}
+              <label class="checkbox">
+                <input type="checkbox" name="vehicles" value="{{ entry.name }}" {% if edit_group and entry.name in edit_group.vehicles %}checked{% endif %}>
+                <span>{{ entry.name }}</span>
+              </label>
+            {% endfor %}
+          </div>
         {% else %}
-          <p class="muted">Noch keine Fahrzeuge geladen. Erst auf „Fahrzeuge aktualisieren“ klicken.</p>
+          <p class="muted">Keine Fahrzeuge geladen.</p>
         {% endif %}
       </fieldset>
 
-      <div class="actions">
-        <button type="submit">{{ "Aktualisieren" if edit_group else "Anlegen" }}</button>
-      </div>
+      <fieldset>
+        <legend>💳 Ladekarten</legend>
+        {% if card_entries %}
+          <div class="checkbox-grid">
+            {% for entry in card_entries %}
+              <label class="checkbox">
+                <input type="checkbox" name="vehicles" value="{{ entry.name }}" {% if edit_group and entry.name in edit_group.vehicles %}checked{% endif %}>
+                <span>{{ entry.name }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="muted">Keine Ladekarten geladen.</p>
+        {% endif %}
+      </fieldset>
+
+      <div class="actions"><button type="submit">{{ "Aktualisieren" if edit_group else "Anlegen" }}</button></div>
     </form>
   </section>
 </div>

@@ -1,22 +1,11 @@
 # EVCC to PDF
 
-Schritt 1: Ingress-Weboberfläche für EVCC-Abrechnung.
+Weboberfläche für EVCC-Abrechnung in Home Assistant.
 
-## Funktionen in Version 0.3.7
-- Eigene Oberfläche in Home Assistant
-- EVCC-Verbindung speichern
-- Fahrzeuge aus EVCC laden
-- Fahrzeuggruppen mit Empfängern verwalten
-- Sender- und SMTP-Daten speichern
-- Scheduler-Konfiguration speichern
-- Testbericht als TXT erzeugen
-- Bericht für Vormonat oder manuell gewählten Monat/Jahr erzeugen
-
-## Speicherorte
-- Einstellungen: `/addon_config/evcc_to_pdf/settings.json`
-- Testberichte: `/share/evcc-pdfs`
-
-
-## Neu in 0.3.7
-- Vollständige Fahrzeugliste aus EVCC `/api/state`
-- Zusätzliche Erkennung und getrennte Anzeige von Ladekarten
+## Version 0.3.8
+- Ingress-fähige UI
+- Einstellungen für EVCC, Absender, SMTP
+- Fahrzeuggruppen mit Empfängern
+- Fahrzeug-/Ladekartenliste aus EVCC `/api/state` plus Sessions
+- TXT-Testbericht
+- robustere Migration bestehender settings.json

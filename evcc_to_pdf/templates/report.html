@@ -2,7 +2,6 @@
 {% block content %}
 <section class="card">
   <h2>Testbericht erzeugen</h2>
-
   {% if not settings.groups %}
     <p>Bitte zuerst mindestens eine Gruppe anlegen.</p>
   {% else %}
@@ -18,42 +17,18 @@
 
       <fieldset>
         <legend>Zeitraum</legend>
-        <label class="checkbox">
-          <input type="radio" name="mode" value="previous_month" checked>
-          <span>Vormonat</span>
-        </label>
-        <label class="checkbox">
-          <input type="radio" name="mode" value="manual">
-          <span>Manuell</span>
-        </label>
+        <label class="checkbox"><input type="radio" name="mode" value="previous_month" checked><span>Vormonat</span></label>
+        <label class="checkbox"><input type="radio" name="mode" value="manual"><span>Manuell</span></label>
 
         <div class="form-grid">
-          <label>
-            <span>Jahr</span>
-            <select name="year">
-              {% for year in years %}
-                <option value="{{ year }}">{{ year }}</option>
-              {% endfor %}
-            </select>
-          </label>
-
-          <label>
-            <span>Monat</span>
-            <select name="month">
-              {% for month in months %}
-                <option value="{{ month }}">{{ "%02d"|format(month) }}</option>
-              {% endfor %}
-            </select>
-          </label>
+          <label><span>Jahr</span><select name="year">{% for year in years %}<option value="{{ year }}">{{ year }}</option>{% endfor %}</select></label>
+          <label><span>Monat</span><select name="month">{% for month in months %}<option value="{{ month }}">{{ "%02d"|format(month) }}</option>{% endfor %}</select></label>
         </div>
       </fieldset>
 
-      <div class="actions">
-        <button type="submit">TXT-Testbericht erzeugen</button>
-      </div>
+      <div class="actions"><button type="submit">TXT-Testbericht erzeugen</button></div>
     </form>
   {% endif %}
-
-  <p class="muted">Ausgabe in Schritt 1: <code>/share/evcc-pdfs</code></p>
+  <p class="muted">Ausgabe: <code>/share/evcc-pdfs</code></p>
 </section>
 {% endblock %}

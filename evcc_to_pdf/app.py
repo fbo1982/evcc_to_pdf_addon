@@ -4,6 +4,7 @@ import uuid
 from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import requests
@@ -13,10 +14,6 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 APP_PORT = 8099
 SETTINGS_DIR = Path("/addon_config/evcc_to_pdf")
 SETTINGS_FILE = SETTINGS_DIR / "settings.json"
-LEGACY_SETTINGS_FILES = [
-    Path("/config/evcc_to_pdf/settings.json"),
-    Path("/data/options.json"),
-]
 REPORT_DIR = Path("/share/evcc-pdfs")
 
 DEFAULT_SETTINGS = {
@@ -39,332 +36,304 @@ def ensure_dirs() -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def deep_merge(defaults: dict, loaded: dict) -> dict:
+    merged = deepcopy(defaults)
+    for k, v in loaded.items():
+        if isinstance(v, dict) and isinstance(merged.get(k), dict):
+            merged[k] = deep_merge(merged[k], v)
+        else:
+            merged[k] = v
+    return merged
+
+
+def extract_name(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("title", "name", "vehicle", "id", "uid"):
+            if key in value and value[key]:
+                return str(value[key]).strip()
+        return ""
+    return str(value).strip()
+
+
+def normalize_vehicle_entry(value: Any) -> dict | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        name = value.strip()
+        if not name:
+            return None
+        entry_type = "card" if "ladekarte" in name.lower() or "gast" in name.lower() else "vehicle"
+        return {"name": name, "type": entry_type}
+    if isinstance(value, dict):
+        name = extract_name(value)
+        if not name:
+            return None
+        entry_type = str(value.get("type") or value.get("entry_type") or "").strip().lower()
+        if entry_type not in {"vehicle", "card"}:
+            entry_type = "card" if "ladekarte" in name.lower() or "gast" in name.lower() else "vehicle"
+        return {"name": name, "type": entry_type}
+    return normalize_vehicle_entry(str(value))
+
+
+def normalize_vehicle_list(items: Any) -> list[dict]:
+    result: list[dict] = []
+    seen = set()
+    if not isinstance(items, list):
+        return result
+    for item in items:
+        normalized = normalize_vehicle_entry(item)
+        if not normalized:
+            continue
+        key = (normalized["name"], normalized["type"])
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(normalized)
+    return sorted(result, key=lambda x: (x["type"], x["name"].lower()))
+
+
+def normalize_group(group: dict) -> dict:
+    normalized = {
+        "id": str(group.get("id") or uuid.uuid4()),
+        "name": str(group.get("name", "")).strip(),
+        "recipient_name": str(group.get("recipient_name", "")).strip(),
+        "recipient_company": str(group.get("recipient_company", "")).strip(),
+        "recipient_email": str(group.get("recipient_email", "")).strip(),
+        "recipient_street": str(group.get("recipient_street", "")).strip(),
+        "recipient_zip": str(group.get("recipient_zip", "")).strip(),
+        "recipient_city": str(group.get("recipient_city", "")).strip(),
+        "grid_price_override": str(group.get("grid_price_override", "")).strip(),
+        "vehicles": [],
+    }
+    raw_vehicles = group.get("vehicles", [])
+    names = []
+    for item in raw_vehicles if isinstance(raw_vehicles, list) else []:
+        name = extract_name(item)
+        if name:
+            names.append(name)
+    normalized["vehicles"] = sorted(set(names), key=str.lower)
+    return normalized
+
+
+def migrate_settings(loaded: dict) -> dict:
+    settings = deep_merge(DEFAULT_SETTINGS, loaded if isinstance(loaded, dict) else {})
+    settings["cached_vehicles"] = normalize_vehicle_list(settings.get("cached_vehicles", []))
+    settings["groups"] = [normalize_group(g) for g in settings.get("groups", []) if isinstance(g, dict)]
+    if "grid_price" in settings and not settings["reporting"].get("grid_price"):
+        try:
+            settings["reporting"]["grid_price"] = float(settings.get("grid_price") or 0)
+        except Exception:
+            settings["reporting"]["grid_price"] = 0.0
+    return settings
+
+
+def load_settings() -> dict:
+    ensure_dirs()
+    if not SETTINGS_FILE.exists():
+        settings = deepcopy(DEFAULT_SETTINGS)
+        save_settings(settings)
+        return settings
+
+    try:
+        loaded = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        loaded = {}
+    settings = migrate_settings(loaded)
+    return settings
+
+
+def save_settings(settings: dict) -> None:
+    ensure_dirs()
+    SETTINGS_FILE.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
 def parse_bool(value: str | None) -> bool:
     return str(value).lower() in {"1", "true", "on", "yes"}
 
 
 def get_previous_month() -> tuple[int, int]:
     today = datetime.today().replace(day=1)
-    last_day_previous_month = today - timedelta(days=1)
-    return last_day_previous_month.year, last_day_previous_month.month
-
-
-def extract_name(value) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value.strip()
-    if isinstance(value, dict):
-        for key in ("title", "name", "id", "uid", "identifier", "label"):
-            v = value.get(key)
-            if isinstance(v, str) and v.strip():
-                return v.strip()
-        return ""
-    return str(value).strip()
-
-
-def normalize_vehicle_entry(name: str, kind: str = "vehicle") -> dict:
-    kind = "card" if kind == "card" else "vehicle"
-    return {
-        "name": str(name).strip(),
-        "type": kind,
-        "icon": "🚗" if kind == "vehicle" else "💳",
-        "label": "Fahrzeug" if kind == "vehicle" else "Ladekarte",
-    }
-
-
-def migrate_settings_data(loaded: dict) -> dict:
-    settings = deepcopy(DEFAULT_SETTINGS)
-
-    # merge standard nested sections
-    for section in ("evcc", "sender", "smtp", "scheduler", "reporting"):
-        merged = deepcopy(DEFAULT_SETTINGS[section])
-        value = loaded.get(section, {})
-        if isinstance(value, dict):
-            merged.update(value)
-        settings[section] = merged
-
-    # support very old flat settings
-    if not settings["evcc"]["url"] and isinstance(loaded.get("evcc_url"), str):
-        settings["evcc"]["url"] = loaded.get("evcc_url", "")
-    if not settings["evcc"]["password"] and isinstance(loaded.get("evcc_password"), str):
-        settings["evcc"]["password"] = loaded.get("evcc_password", "")
-    if not settings["reporting"]["grid_price"] and loaded.get("grid_price") not in (None, ""):
-        try:
-            settings["reporting"]["grid_price"] = float(str(loaded.get("grid_price")).replace(",", "."))
-        except Exception:
-            pass
-
-    # carry over any non-nested keys we know
-    for key in ("groups", "cached_vehicles"):
-        value = loaded.get(key)
-        if isinstance(value, list):
-            settings[key] = value
-
-    # normalize cached vehicles
-    normalized_cache = []
-    for item in settings.get("cached_vehicles", []):
-        if isinstance(item, str) and item.strip():
-            kind = "card" if "ladekarte" in item.lower() else "vehicle"
-            normalized_cache.append(normalize_vehicle_entry(item.strip(), kind))
-        elif isinstance(item, dict):
-            name = extract_name(item)
-            if name:
-                normalized_cache.append(normalize_vehicle_entry(name, item.get("type", "vehicle")))
-    settings["cached_vehicles"] = normalized_cache
-
-    # normalize groups
-    normalized_groups = []
-    for group in settings.get("groups", []):
-        if not isinstance(group, dict):
-            continue
-        g = {
-            "id": group.get("id") or str(uuid.uuid4()),
-            "name": str(group.get("name", "")).strip(),
-            "recipient_name": str(group.get("recipient_name", "")).strip(),
-            "recipient_company": str(group.get("recipient_company", "")).strip(),
-            "recipient_email": str(group.get("recipient_email", "")).strip(),
-            "recipient_street": str(group.get("recipient_street", "")).strip(),
-            "recipient_zip": str(group.get("recipient_zip", "")).strip(),
-            "recipient_city": str(group.get("recipient_city", "")).strip(),
-            "vehicles": [],
-            "grid_price_override": str(group.get("grid_price_override", "")).strip(),
-        }
-        for item in group.get("vehicles", []):
-            name = extract_name(item)
-            if name:
-                g["vehicles"].append(name)
-        normalized_groups.append(g)
-    settings["groups"] = normalized_groups
-
-    return settings
-
-
-def load_settings() -> dict:
-    ensure_dirs()
-    if SETTINGS_FILE.exists():
-        try:
-            loaded = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-            return migrate_settings_data(loaded)
-        except Exception:
-            pass
-
-    # try legacy files once
-    for legacy in LEGACY_SETTINGS_FILES:
-        if legacy.exists():
-            try:
-                loaded = json.loads(legacy.read_text(encoding="utf-8"))
-                settings = migrate_settings_data(loaded)
-                save_settings(settings)
-                return settings
-            except Exception:
-                continue
-
-    settings = deepcopy(DEFAULT_SETTINGS)
-    save_settings(settings)
-    return settings
-
-
-def save_settings(settings: dict) -> None:
-    ensure_dirs()
-    clean = migrate_settings_data(settings)
-    SETTINGS_FILE.write_text(json.dumps(clean, indent=2, ensure_ascii=False), encoding="utf-8")
+    previous = today - timedelta(days=1)
+    return previous.year, previous.month
 
 
 def evcc_session(settings: dict) -> requests.Session:
     session = requests.Session()
     base_url = str(settings["evcc"].get("url", "")).rstrip("/")
-    password = str(settings["evcc"].get("password", ""))
+    password = str(settings["evcc"].get("password", "")).strip()
+
     if not base_url:
         raise ValueError("EVCC-URL ist leer.")
+
     if password:
-        response = session.post(
-            f"{base_url}/api/auth/login",
-            json={"password": password},
-            timeout=15,
-        )
-        response.raise_for_status()
+        login_url = f"{base_url}/api/auth/login"
+        resp = session.post(login_url, json={"password": password}, timeout=15)
+        resp.raise_for_status()
+
     return session
 
 
 def fetch_sessions(settings: dict) -> list[dict]:
     base_url = str(settings["evcc"].get("url", "")).rstrip("/")
-    session = evcc_session(settings)
-    response = session.get(f"{base_url}/api/sessions", timeout=30)
-    response.raise_for_status()
-    data = response.json()
-    result = data["result"] if isinstance(data, dict) and "result" in data else data
-    if not isinstance(result, list):
-        raise ValueError("Unerwartete Antwort von EVCC bei /api/sessions")
-    return result
+    sess = evcc_session(settings)
+    resp = sess.get(f"{base_url}/api/sessions", timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+    if isinstance(data, dict) and "result" in data:
+        data = data["result"]
+    if not isinstance(data, list):
+        raise ValueError("Unerwartete Antwort von /api/sessions")
+    return data
 
 
-def vehicle_entries_from_cache(settings: dict) -> list[dict]:
-    entries = []
-    for item in settings.get("cached_vehicles", []):
-        if isinstance(item, str):
-            entries.append(normalize_vehicle_entry(item, "vehicle"))
-        elif isinstance(item, dict) and item.get("name"):
-            entries.append(normalize_vehicle_entry(item["name"], item.get("type", "vehicle")))
-    return sorted(entries, key=lambda x: (0 if x["type"] == "vehicle" else 1, x["name"].lower()))
+def fetch_state(settings: dict) -> dict:
+    base_url = str(settings["evcc"].get("url", "")).rstrip("/")
+    sess = evcc_session(settings)
+    resp = sess.get(f"{base_url}/api/state", timeout=20)
+    resp.raise_for_status()
+    data = resp.json()
+    if isinstance(data, dict) and "result" in data and isinstance(data["result"], dict):
+        return data["result"]
+    if isinstance(data, dict):
+        return data
+    raise ValueError("Unerwartete Antwort von /api/state")
 
 
 def fetch_available_vehicles(settings: dict) -> list[dict]:
-    base_url = str(settings["evcc"].get("url", "")).rstrip("/")
-    session = evcc_session(settings)
-    entries: dict[str, dict] = {}
+    entries: list[dict] = []
 
-    def add_entry(name, kind: str = "vehicle") -> None:
-        normalized_name = extract_name(name)
-        if not normalized_name:
-            return
-        current = entries.get(normalized_name)
-        if current is None:
-            entries[normalized_name] = normalize_vehicle_entry(normalized_name, kind)
-        elif current.get("type") != "vehicle" and kind == "vehicle":
-            entries[normalized_name] = normalize_vehicle_entry(normalized_name, kind)
+    try:
+        state = fetch_state(settings)
+    except Exception:
+        state = {}
 
-    # 1) vehicles from state
-    response = session.get(f"{base_url}/api/state", timeout=15)
-    response.raise_for_status()
-    data = response.json()
-    result = data.get("result", data) if isinstance(data, dict) else {}
-
-    vehicles_data = result.get("vehicles", []) if isinstance(result, dict) else []
-    if isinstance(vehicles_data, dict):
-        vehicles_iter = vehicles_data.values()
-    elif isinstance(vehicles_data, list):
-        vehicles_iter = vehicles_data
+    # vehicles may be list or dict depending on EVCC version/config
+    vehicles_obj = state.get("vehicles", [])
+    if isinstance(vehicles_obj, dict):
+        iterable = vehicles_obj.values()
     else:
-        vehicles_iter = []
+        iterable = vehicles_obj if isinstance(vehicles_obj, list) else []
 
-    for item in vehicles_iter:
-        if isinstance(item, dict):
-            add_entry(item.get("title") or item.get("name") or item.get("vehicle"), "vehicle")
-            for key in ("identifiers", "identifier", "cards", "rfid", "tokens"):
-                extra = item.get(key)
-                if isinstance(extra, list):
-                    for sub in extra:
-                        sub_name = extract_name(sub)
-                        if sub_name:
-                            add_entry(sub_name, "card")
-                else:
-                    sub_name = extract_name(extra)
-                    if sub_name:
-                        add_entry(sub_name, "card")
-        else:
-            add_entry(item, "vehicle")
+    for item in iterable:
+        name = extract_name(item)
+        if name:
+            entries.append({"name": name, "type": "card" if "ladekarte" in name.lower() or "gast" in name.lower() else "vehicle"})
 
-    # 2) session names as fallback/addition
+    # Some setups expose loadpoint vehicle names or identifiers
+    loadpoints = state.get("loadpoints", [])
+    if isinstance(loadpoints, list):
+        for lp in loadpoints:
+            if not isinstance(lp, dict):
+                continue
+            for key in ("vehicleName", "vehicleTitle", "vehicle", "card", "tag"):
+                name = extract_name(lp.get(key))
+                if name:
+                    entries.append({"name": name, "type": "card" if "ladekarte" in name.lower() or "gast" in name.lower() else "vehicle"})
+
+    # Sessions as fallback/additional source
     try:
         sessions = fetch_sessions(settings)
-        for item in sessions:
-            if not isinstance(item, dict):
-                continue
-            vehicle = extract_name(item.get("vehicle"))
-            if vehicle:
-                kind = "card" if "ladekarte" in vehicle.lower() else "vehicle"
-                add_entry(vehicle, kind)
     except Exception:
-        pass
+        sessions = []
 
-    return sorted(entries.values(), key=lambda x: (0 if x["type"] == "vehicle" else 1, x["name"].lower()))
+    for item in sessions:
+        if not isinstance(item, dict):
+            continue
+        name = extract_name(item.get("vehicle"))
+        if name:
+            entries.append({"name": name, "type": "card" if "ladekarte" in name.lower() or "gast" in name.lower() else "vehicle"})
+
+    return normalize_vehicle_list(entries)
 
 
-def report_rows_for_group(settings: dict, group: dict, year: int, month: int) -> tuple[pd.DataFrame, dict]:
-    sessions = fetch_sessions(settings)
-    df = pd.DataFrame(sessions)
-    if df.empty:
-        raise ValueError("Keine Sessions gefunden.")
-    if "created" not in df.columns:
-        raise ValueError("Spalte 'created' fehlt in den EVCC-Sessions.")
-    if "chargedEnergy" not in df.columns:
-        raise ValueError("Spalte 'chargedEnergy' fehlt in den EVCC-Sessions.")
+def grid_price_for_group(settings: dict, group: dict) -> float:
+    raw = str(group.get("grid_price_override", "")).strip().replace(",", ".")
+    if raw:
+        try:
+            return float(raw)
+        except ValueError:
+            pass
+    return float(settings.get("reporting", {}).get("grid_price", 0) or 0)
 
-    df["created"] = pd.to_datetime(df["created"], errors="coerce", utc=True).dt.tz_localize(None)
-    df = df.dropna(subset=["created"])
-    df = df[(df["created"].dt.year == year) & (df["created"].dt.month == month)]
 
-    selected_vehicles = [extract_name(v) for v in group.get("vehicles", []) if extract_name(v)]
-    if "vehicle" in df.columns and selected_vehicles:
-        df["vehicle"] = df["vehicle"].fillna("").astype(str)
-        df = df[df["vehicle"].isin(selected_vehicles)]
-
-    if df.empty:
-        raise ValueError("Keine Sessions für die Auswahl gefunden.")
-
-    df["chargedEnergy"] = pd.to_numeric(df["chargedEnergy"], errors="coerce").fillna(0)
-    grid_price = group.get("grid_price_override")
-    try:
-        grid_price = float(grid_price) if str(grid_price).strip() else float(settings["reporting"].get("grid_price", 0) or 0)
-    except ValueError:
-        grid_price = float(settings["reporting"].get("grid_price", 0) or 0)
-
-    df["price"] = (df["chargedEnergy"] * grid_price).round(2)
-    df = df.sort_values("created", ascending=True)
-
-    summary = {
-        "year": year,
-        "month": month,
-        "group_name": group.get("name", ""),
-        "recipient_name": group.get("recipient_name", ""),
-        "recipient_company": group.get("recipient_company", ""),
-        "recipient_email": group.get("recipient_email", ""),
-        "vehicles": selected_vehicles,
-        "grid_price": grid_price,
-        "total_energy": round(float(df["chargedEnergy"].sum()), 2),
-        "total_price": round(float(df["price"].sum()), 2),
-        "row_count": int(len(df)),
-    }
-    return df, summary
+def find_group(settings: dict, group_id: str) -> dict | None:
+    for group in settings.get("groups", []):
+        if group.get("id") == group_id:
+            return group
+    return None
 
 
 def write_txt_report(settings: dict, group: dict, year: int, month: int) -> Path:
-    df, summary = report_rows_for_group(settings, group, year, month)
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    safe_group = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in group["name"]).strip("_") or "gruppe"
+    sessions = fetch_sessions(settings)
+    df = pd.DataFrame(sessions)
+
+    if df.empty:
+        raise ValueError("Keine Sessions gefunden.")
+
+    if "created" not in df.columns:
+        raise ValueError("Spalte 'created' fehlt in den Sessions.")
+
+    df["created"] = pd.to_datetime(df["created"], errors="coerce", utc=True).dt.tz_localize(None)
+    df = df.dropna(subset=["created"])
+
+    df = df[(df["created"].dt.year == year) & (df["created"].dt.month == month)]
+
+    if "vehicle" in df.columns and group.get("vehicles"):
+        wanted = set(group["vehicles"])
+        df["vehicle"] = df["vehicle"].fillna("").astype(str)
+        df = df[df["vehicle"].isin(wanted)]
+
+    if df.empty:
+        raise ValueError("Keine Sessions für diese Auswahl gefunden.")
+
+    if "chargedEnergy" not in df.columns:
+        raise ValueError("Spalte 'chargedEnergy' fehlt in den Sessions.")
+
+    df["chargedEnergy"] = pd.to_numeric(df["chargedEnergy"], errors="coerce").fillna(0)
+    price = grid_price_for_group(settings, group)
+    df["price"] = (df["chargedEnergy"] * price).round(2)
+    df = df.sort_values("created", ascending=True)
+
+    safe_group = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in (group.get("name") or "gruppe")).strip("_")
     output_file = REPORT_DIR / f"evcc_report_{year:04d}-{month:02d}_{safe_group}.txt"
 
     lines = [
         "EVCC Abrechnung",
         "================",
         "",
-        f"Gruppe: {summary['group_name']}",
-        f"Empfänger: {summary['recipient_name']}",
-        f"Firma: {summary['recipient_company']}",
-        f"E-Mail: {summary['recipient_email']}",
+        f"Gruppe: {group.get('name', '')}",
+        f"Empfänger: {group.get('recipient_name', '')}",
+        f"Firma: {group.get('recipient_company', '')}",
+        f"E-Mail: {group.get('recipient_email', '')}",
         "",
         f"Monat: {year:04d}-{month:02d}",
-        f"Fahrzeuge: {', '.join(summary['vehicles']) if summary['vehicles'] else 'Alle'}",
-        f"Netzstrompreis: {summary['grid_price']:.2f} €/kWh",
+        f"Fahrzeuge: {', '.join(group.get('vehicles', [])) if group.get('vehicles') else 'Alle'}",
+        f"Netzstrompreis: {price:.2f} €/kWh",
         "",
         "Chronologische Ladeliste:",
         "",
     ]
+
     for _, row in df.iterrows():
         created_str = row["created"].strftime("%Y-%m-%d %H:%M")
         vehicle = str(row.get("vehicle", ""))
         energy = float(row.get("chargedEnergy", 0))
-        price = float(row.get("price", 0))
-        lines.append(f"{created_str} | {vehicle} | {energy:.2f} kWh | {price:.2f} €")
+        total = float(row.get("price", 0))
+        lines.append(f"{created_str} | {vehicle} | {energy:.2f} kWh | {total:.2f} €")
 
     lines.extend([
         "",
-        f"Anzahl Ladevorgänge: {summary['row_count']}",
-        f"Gesamtenergie: {summary['total_energy']:.2f} kWh",
-        f"Gesamtbetrag: {summary['total_price']:.2f} €",
+        f"Anzahl Ladevorgänge: {len(df)}",
+        f"Gesamtenergie: {float(df['chargedEnergy'].sum()):.2f} kWh",
+        f"Gesamtbetrag: {float(df['price'].sum()):.2f} €",
     ])
 
-    output_file.write_text("
-".join(lines), encoding="utf-8")
+    output_file.write_text("\n".join(lines), encoding="utf-8")
     return output_file
-
-
-def find_group(settings: dict, group_id: str):
-    for group in settings["groups"]:
-        if group.get("id") == group_id:
-            return group
-    return None
 
 
 @app.context_processor
@@ -373,8 +342,6 @@ def inject_common():
     ingress_path = request.headers.get("X-Ingress-Path", "").rstrip("/")
     return {
         "settings": settings,
-        "group_count": len(settings.get("groups", [])),
-        "vehicle_count": len(settings.get("cached_vehicles", [])),
         "ingress_path": ingress_path,
     }
 
@@ -382,13 +349,13 @@ def inject_common():
 @app.route("/")
 def dashboard():
     settings = load_settings()
-    cached_vehicle_entries = vehicle_entries_from_cache(settings)
-    return render_template("dashboard.html", settings=settings, cached_vehicle_entries=cached_vehicle_entries, title="Dashboard")
+    return render_template("dashboard.html", settings=settings)
 
 
 @app.route("/settings", methods=["GET", "POST"])
 def settings_page():
     settings = load_settings()
+
     if request.method == "POST":
         settings["evcc"]["url"] = request.form.get("evcc_url", "").strip()
         settings["evcc"]["password"] = request.form.get("evcc_password", "").strip()
@@ -423,8 +390,9 @@ def settings_page():
 
         save_settings(settings)
         flash("Einstellungen gespeichert.", "success")
-        return redirect((request.headers.get("X-Ingress-Path", "").rstrip("/") or "") + "/settings")
-    return render_template("settings.html", settings=settings, title="Einstellungen")
+        return redirect(f"{request.headers.get('X-Ingress-Path', '').rstrip('/')}/settings")
+
+    return render_template("settings.html", settings=settings)
 
 
 @app.route("/refresh_vehicles", methods=["POST"])
@@ -434,29 +402,34 @@ def refresh_vehicles():
         vehicles = fetch_available_vehicles(settings)
         settings["cached_vehicles"] = vehicles
         save_settings(settings)
-        REPORT_DIR.mkdir(parents=True, exist_ok=True)
-        (REPORT_DIR / "available_vehicles.txt").write_text("
-".join(v["name"] for v in vehicles), encoding="utf-8")
-        flash(f"{len(vehicles)} Fahrzeuge geladen.", "success")
+
+        cache_file = REPORT_DIR / "available_vehicles.txt"
+        lines = [f"{'🚗' if x['type'] == 'vehicle' else '💳'} {x['name']}" for x in vehicles]
+        cache_file.write_text("\n".join(lines), encoding="utf-8")
+
+        flash(f"{len(vehicles)} Fahrzeuge/Ladekarten geladen.", "success")
     except Exception as err:
         flash(f"Fahrzeuge konnten nicht geladen werden: {err}", "error")
-    return redirect((request.headers.get("X-Ingress-Path", "").rstrip("/") or "") + "/groups")
+    return redirect(f"{request.headers.get('X-Ingress-Path', '').rstrip('/')}/groups")
 
 
 @app.route("/groups", methods=["GET", "POST"])
 def groups_page():
     settings = load_settings()
+
     if request.method == "POST":
-        form_action = request.form.get("form_action", "").strip()
-        if form_action == "delete":
+        action = request.form.get("form_action", "").strip()
+
+        if action == "delete":
             group_id = request.form.get("group_id", "").strip()
             settings["groups"] = [g for g in settings["groups"] if g.get("id") != group_id]
             save_settings(settings)
             flash("Gruppe gelöscht.", "success")
-            return redirect((request.headers.get("X-Ingress-Path", "").rstrip("/") or "") + "/groups")
+            return redirect(f"{request.headers.get('X-Ingress-Path', '').rstrip('/')}/groups")
 
         group_id = request.form.get("group_id", "").strip() or str(uuid.uuid4())
-        selected_vehicles = [extract_name(v) for v in request.form.getlist("vehicles") if extract_name(v)]
+        selected_vehicles = sorted({extract_name(v) for v in request.form.getlist("vehicles") if extract_name(v)}, key=str.lower)
+
         group_data = {
             "id": group_id,
             "name": request.form.get("name", "").strip(),
@@ -469,9 +442,11 @@ def groups_page():
             "vehicles": selected_vehicles,
             "grid_price_override": request.form.get("grid_price_override", "").strip().replace(",", "."),
         }
+
         if not group_data["name"]:
             flash("Gruppenname fehlt.", "error")
-            return redirect((request.headers.get("X-Ingress-Path", "").rstrip("/") or "") + "/groups")
+            return redirect(f"{request.headers.get('X-Ingress-Path', '').rstrip('/')}/groups")
+
         existing = find_group(settings, group_id)
         if existing:
             existing.update(group_data)
@@ -479,45 +454,60 @@ def groups_page():
         else:
             settings["groups"].append(group_data)
             flash("Gruppe angelegt.", "success")
+
         save_settings(settings)
-        return redirect((request.headers.get("X-Ingress-Path", "").rstrip("/") or "") + "/groups")
+        return redirect(f"{request.headers.get('X-Ingress-Path', '').rstrip('/')}/groups")
 
     edit_group_id = request.args.get("edit", "").strip()
     edit_group = find_group(settings, edit_group_id) if edit_group_id else None
-    return render_template("groups.html", settings=settings, edit_group=edit_group, title="Gruppen")
+    vehicles = settings.get("cached_vehicles", [])
+    vehicle_entries = [x for x in vehicles if x.get("type") == "vehicle"]
+    card_entries = [x for x in vehicles if x.get("type") == "card"]
+
+    return render_template(
+        "groups.html",
+        settings=settings,
+        edit_group=edit_group,
+        vehicle_entries=vehicle_entries,
+        card_entries=card_entries,
+    )
 
 
 @app.route("/report", methods=["GET", "POST"])
 def report_page():
     settings = load_settings()
-    generated_file = None
+
     if request.method == "POST":
         group_id = request.form.get("group_id", "").strip()
         mode = request.form.get("mode", "previous_month").strip()
+
         if mode == "manual":
             try:
                 year = int(request.form.get("year", "").strip())
                 month = int(request.form.get("month", "").strip())
             except ValueError:
                 flash("Jahr oder Monat ist ungültig.", "error")
-                return redirect((request.headers.get("X-Ingress-Path", "").rstrip("/") or "") + "/report")
+                return redirect(f"{request.headers.get('X-Ingress-Path', '').rstrip('/')}/report")
         else:
             year, month = get_previous_month()
 
         group = find_group(settings, group_id)
         if not group:
             flash("Gruppe nicht gefunden.", "error")
-            return redirect((request.headers.get("X-Ingress-Path", "").rstrip("/") or "") + "/report")
+            return redirect(f"{request.headers.get('X-Ingress-Path', '').rstrip('/')}/report")
+
         try:
-            generated_file = write_txt_report(settings, group, year, month)
-            flash(f"Bericht erzeugt: {generated_file}", "success")
+            output_file = write_txt_report(settings, group, year, month)
+            flash(f"Bericht erzeugt: {output_file}", "success")
         except Exception as err:
             flash(f"Bericht konnte nicht erzeugt werden: {err}", "error")
+
+        return redirect(f"{request.headers.get('X-Ingress-Path', '').rstrip('/')}/report")
 
     current_year = datetime.today().year
     years = list(range(current_year - 3, current_year + 2))
     months = list(range(1, 13))
-    return render_template("report.html", settings=settings, years=years, months=months, generated_file=generated_file, title="Testbericht")
+    return render_template("report.html", settings=settings, years=years, months=months)
 
 
 @app.route("/health")
