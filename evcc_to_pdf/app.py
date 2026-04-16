@@ -28,7 +28,7 @@ REPORT_DIR = Path("/share/evcc-pdfs")
 OPTIONS_FILE = Path("/data/options.json")
 DEFAULT_TEMPLATE_KEY = "default"
 DEFAULT_TEMPLATE_LABEL = "Standard HTML"
-APP_VERSION = "0.6.5"
+APP_VERSION = "0.6.6"
 
 DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
 <html lang="de">
@@ -37,27 +37,28 @@ DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
   <style>
     @page {
       size: A4;
-      margin: 18mm 14mm 18mm 14mm;
+      margin: 14mm 10mm 16mm 10mm;
       @bottom-center {
         content: "- Seite " counter(page) " / " counter(pages) " -";
         font-size: 9pt;
         color: #444;
       }
     }
-    body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 11pt; color: #111; }
-    .header { display: table; width: 100%; margin-bottom: 34px; }
+    body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 10pt; color: #111; }
+    .header { display: table; width: 100%; margin-bottom: 28px; }
     .col { display: table-cell; width: 50%; vertical-align: top; }
     .right { text-align: right; }
-    .date-line { margin-top: 28px; margin-bottom: 28px; }
-    .period { margin: 22px 0 22px; font-weight: bold; }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 10.5pt; }
-    th, td { border: 1px solid #666; padding: 6px 7px; vertical-align: top; }
+    .date-line { margin-top: 24px; margin-bottom: 30px; }
+    .period { margin: 26px 0 26px; font-weight: bold; font-size: 11pt; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 9.2pt; table-layout: fixed; }
+    th, td { border: 1px solid #666; padding: 5px 6px; vertical-align: top; word-wrap: break-word; }
     th { background: #efefef; text-align: left; }
-    .summary { margin-top: 16px; }
-    .summary p { margin: 5px 0; }
-    .bank { margin-top: 24px; }
-    .closing { margin-top: 26px; }
-    .signature { margin-top: 22px; }
+    .summary { margin-top: 14px; }
+    .summary p { margin: 4px 0; }
+    .bank { margin-top: 20px; }
+    .closing { margin-top: 24px; }
+    .signature { margin-top: 10px; }
+    .notice { margin-top: 20px; font-size: 9pt; color: #444; }
   </style>
 </head>
 <body>
@@ -112,6 +113,7 @@ DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
   <div class="closing">
     <p>Mit freundlichen Grüßen</p>
     <p class="signature">{{ sender.name }}</p>
+    <p class="notice">Dieses Dokument wurde elektronisch erstellt und bedarf keiner Unterschrift.</p>
   </div>
 </body>
 </html>"""
@@ -245,8 +247,8 @@ def normalize_template_dict(templates):
         out[tpl_key] = {"key": tpl_key, "label": str(value.get("label") or tpl_key).strip(), "content": str(value.get("content") or "").strip()}
     if DEFAULT_TEMPLATE_KEY not in out:
         out[DEFAULT_TEMPLATE_KEY] = {"key": DEFAULT_TEMPLATE_KEY, "label": DEFAULT_TEMPLATE_LABEL, "content": DEFAULT_TEMPLATE_HTML}
-    if not out[DEFAULT_TEMPLATE_KEY]["content"].strip():
-        out[DEFAULT_TEMPLATE_KEY]["content"] = DEFAULT_TEMPLATE_HTML
+    out[DEFAULT_TEMPLATE_KEY]["label"] = DEFAULT_TEMPLATE_LABEL
+    out[DEFAULT_TEMPLATE_KEY]["content"] = DEFAULT_TEMPLATE_HTML
     return out
 
 def normalize_group(group):
