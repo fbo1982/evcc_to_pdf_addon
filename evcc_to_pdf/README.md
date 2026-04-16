@@ -1,11 +1,3 @@
-# EVCC to PDF v0.7.0
+# EVCC to PDF Add-on
 
-Safe-storage Version.
-
-## Speicherpriorität
-1. `/addon_config/evcc_to_pdf/settings.json` (führend)
-2. MQTT als Spiegel / optionaler Import
-3. Defaults nur bei Erststart
-
-## Sicherung
-Vor jedem Speichern wird ein Backup unter `/addon_config/evcc_to_pdf/backups/` erzeugt.
+Ready.
