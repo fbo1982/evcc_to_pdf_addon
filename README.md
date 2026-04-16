@@ -1,6 +1,6 @@
 # EVCC to PDF
 
-![Version](https://img.shields.io/badge/version-1.0.0-brightgreen)
+![Version](https://img.shields.io/badge/version-1.0.1-brightgreen)
 ![Status](https://img.shields.io/badge/status-stable-success)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Addon-blue)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
