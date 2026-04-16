@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.1
+
+- Version auf **v1.1.1** angehoben.
+- Das bisherige **Standard-Template** wird nun als Editor-kompatibles Template ausgeliefert.
+- Standard-Template enthält jetzt bereits strukturierte Editor-Bausteine mit den vorhandenen EVCC-/Jinja-Platzhaltern, sodass es direkt im grafischen Editor bearbeitet werden kann.
+- Bestehende Installationen erhalten für das Default-Template automatisch die editorfähige Standardstruktur.
+
 ## v1.1.0
 
 ✨ Grafischer Template-Editor integriert

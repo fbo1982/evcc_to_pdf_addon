@@ -23,15 +23,23 @@
     <div class="editor-layout">
       <aside class="card editor-sidebar">
         <h3>Bausteine</h3>
-        <div class="builder-palette">
-          <button type="button" class="builder-add" data-type="heading">Überschrift</button>
-          <button type="button" class="builder-add" data-type="text">Text</button>
-          <button type="button" class="builder-add" data-type="summary">Kennzahlen</button>
-          <button type="button" class="builder-add" data-type="table">Tabelle</button>
-          <button type="button" class="builder-add" data-type="separator">Trennlinie</button>
-          <button type="button" class="builder-add" data-type="html">Freies HTML</button>
+        <div class="palette-section">
+          <div class="palette-title">Layout</div>
+          <div class="builder-palette">
+            <button type="button" class="builder-add" data-type="heading">Überschrift</button>
+            <button type="button" class="builder-add" data-type="text">Text</button>
+            <button type="button" class="builder-add" data-type="separator">Trennlinie</button>
+            <button type="button" class="builder-add" data-type="html">Freies HTML</button>
+          </div>
         </div>
-        <div class="subblock">
+        <div class="palette-section">
+          <div class="palette-title">EVCC Blöcke</div>
+          <div class="builder-palette">
+            <button type="button" class="builder-add accent" data-type="summary">Kennzahlen</button>
+            <button type="button" class="builder-add accent" data-type="table">Tabelle</button>
+          </div>
+        </div>
+        <div class="subblock placeholders-card">
           <strong>Platzhalter</strong>
           <div class="chips">
             <span class="chip">{{ '{{ period_label }}' }}</span>
@@ -46,12 +54,12 @@
       <section class="card editor-canvas-wrap">
         <div class="card-head">
           <div>
-            <h3>Seite</h3>
-            <span class="muted">Drag & Drop zum Umordnen</span>
+            <h3>A4-Seite</h3>
+            <span class="muted">Bausteine per Klick hinzufügen und in der Seite sortieren</span>
           </div>
           <button type="button" class="button secondary" id="previewRefresh">Vorschau aktualisieren</button>
         </div>
-        <div id="builderCanvas" class="builder-canvas"></div>
+        <div class="builder-page-frame"><div id="builderCanvas" class="builder-canvas"></div></div>
       </section>
 
       <aside class="card editor-sidebar">
@@ -68,7 +76,7 @@
 <script>
 const initialSchema = {{ editor_schema|tojson }};
 const state = {
-  schema: initialSchema && typeof initialSchema === 'object' ? initialSchema : { version: 1, page: { title: 'EVCC Bericht', accent: '#48c7ff' }, blocks: [] },
+  schema: initialSchema && typeof initialSchema === 'object' ? initialSchema : { version: 1, page: { title: 'EVCC Bericht', accent: '#22c55e' }, blocks: [] },
   selectedId: null,
 };
 
@@ -220,8 +228,7 @@ function buildPreviewHtml() {
   const blocks = state.schema.blocks || [];
   const preview = blocks.map(block => previewForBlock(block)).join('');
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{font-family:Arial,sans-serif;background:#fff;color:#111827;padding:24px;font-size:14px}
-    h1,h2,h3{margin:0 0 12px} p{line-height:1.5} .mini-summary{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.mini-summary div{border:1px solid #cbd5e1;background:#eff6ff;border-radius:12px;padding:14px}.mini-summary span{display:block;color:#64748b;margin-bottom:4px}.mini-summary strong{font-size:20px;color:${state.schema.page?.accent || '#48c7ff'}} .mini-table{width:100%;border-collapse:collapse;margin-top:8px}.mini-table th,.mini-table td{border:1px solid #94a3b8;padding:6px;text-align:left} hr{border:0;border-top:1px solid #cbd5e1;margin:16px 0}
+    body{font-family:Arial,sans-serif;background:#ffffff;color:#111827;padding:28px;font-size:14px}\n    h1,h2,h3{margin:0 0 12px} p{line-height:1.6} .mini-summary{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.mini-summary div{border:1px solid #dbe7f3;background:#f8fbff;border-radius:14px;padding:14px}.mini-summary span{display:block;color:#64748b;margin-bottom:4px}.mini-summary strong{font-size:20px;color:${state.schema.page?.accent || '#22c55e'}} .mini-table{width:100%;border-collapse:collapse;margin-top:8px}.mini-table th,.mini-table td{border:1px solid #cbd5e1;padding:7px;text-align:left} hr{border:0;border-top:1px solid #dbe7f3;margin:16px 0}
   </style></head><body>${preview}</body></html>`;
 }
 

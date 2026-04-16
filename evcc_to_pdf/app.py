@@ -29,95 +29,16 @@ REPORT_DIR = Path("/share/evcc-pdfs")
 OPTIONS_FILE = Path("/data/options.json")
 DEFAULT_TEMPLATE_KEY = "default"
 DEFAULT_TEMPLATE_LABEL = "Standard HTML"
-APP_VERSION = "0.7.0"
+APP_VERSION = "1.1.1"
 
-DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
+DEFAULT_TEMPLATE_HTML = """
+<!DOCTYPE html>
 <html lang="de">
-<head>
-  <meta charset="utf-8">
-  <style>
-    @page {
-      size: A4;
-      margin: 14mm 10mm 16mm 10mm;
-      @bottom-center {
-        content: "- Seite " counter(page) " / " counter(pages) " -";
-        font-size: 9pt;
-        color: #444;
-      }
-    }
-    body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 10pt; color: #111; }
-    .header { display: table; width: 100%; margin-bottom: 28px; }
-    .col { display: table-cell; width: 50%; vertical-align: top; }
-    .right { text-align: right; }
-    .date-line { margin-top: 24px; margin-bottom: 30px; }
-    .period { margin: 26px 0 26px; font-weight: bold; font-size: 11pt; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 9.2pt; table-layout: fixed; }
-    th, td { border: 1px solid #666; padding: 5px 6px; vertical-align: top; word-wrap: break-word; }
-    th { background: #efefef; text-align: left; }
-    .summary { margin-top: 14px; }
-    .summary p { margin: 4px 0; }
-    .bank { margin-top: 20px; }
-    .closing { margin-top: 24px; }
-    .signature { margin-top: 10px; }
-    .notice { margin-top: 20px; font-size: 9pt; color: #444; }
-  </style>
-</head>
 <body>
-  <div class="header">
-    <div class="col">
-      <strong>{{ recipient.company or recipient.name }}</strong><br>
-      {{ recipient.name }}<br>
-      {{ recipient.street }}<br>
-      {{ recipient.zip }} {{ recipient.city }}
-    </div>
-    <div class="col right">
-      <strong>{{ sender.name }}</strong><br>
-      {{ sender.street }}<br>
-      {{ sender.zip }} {{ sender.city }}
-      <div class="date-line">{{ invoice_date }}</div>
-    </div>
-  </div>
-
-  <div class="period">{{ billing_mode_label }} – {{ period_label }}</div>
-
-  <table>
-    <thead>
-      <tr>
-        <th>Datum</th>
-        <th>Startzeit</th>
-        <th>Endzeit</th>
-        <th>Fahrzeug</th>
-        <th>Geladene kWh</th>
-        <th>Kosten (€)</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ rows_html|safe }}
-    </tbody>
-  </table>
-
-  <div class="summary">
-    <p><strong>Gesamt geladene kWh:</strong> {{ total_energy_kwh }}</p>
-    <p><strong>Gesamtkosten:</strong> {{ total_cost_eur }}</p>
-  </div>
-
-  <div class="bank">
-    <p>Ich bitte um Begleichung der Kosten für den entsprechenden Zeitraum auf folgendes Konto:</p>
-    <p>
-      <strong>Empfänger:</strong> {{ bank.recipient }}<br>
-      <strong>IBAN:</strong> {{ bank.iban }}<br>
-      <strong>BIC:</strong> {{ bank.bic }}<br>
-      {{ bank.institute }}
-    </p>
-  </div>
-
-  <div class="closing">
-    <p>Mit freundlichen Grüßen</p>
-    <p class="signature">{{ sender.name }}</p>
-    <p class="notice">Dieses Dokument wurde elektronisch erstellt und bedarf keiner Unterschrift.</p>
-  </div>
+  <p>Standardtemplate wird geladen …</p>
 </body>
-</html>"""
+</html>
+"""
 
 
 EDITOR_DATA_PREFIX = "<!-- EVCC_EDITOR_DATA_BASE64:"
@@ -134,7 +55,7 @@ def build_default_editor_schema(raw_html=""):
     ]
     if raw_html:
         blocks = [{"id": str(uuid.uuid4()), "type": "html", "title": "Bestehendes HTML", "html": raw_html}]
-    return {"version": 1, "page": {"title": "EVCC Bericht", "accent": "#48c7ff"}, "blocks": blocks}
+    return {"version": 1, "page": {"title": "EVCC Bericht", "accent": "#22c55e"}, "blocks": blocks}
 
 
 def extract_editor_schema(content):
@@ -161,7 +82,7 @@ def _editor_text_html(text):
 def render_editor_template_html(schema):
     schema = schema if isinstance(schema, dict) else build_default_editor_schema()
     page = schema.get("page", {}) if isinstance(schema.get("page"), dict) else {}
-    accent = str(page.get("accent") or "#48c7ff")
+    accent = str(page.get("accent") or "#22c55e")
     body_parts = []
     for block in schema.get("blocks", []):
         if not isinstance(block, dict):
