@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="de">
 <head>
@@ -14,7 +15,7 @@
         <a href="{{ ingress_path }}/">Dashboard</a>
         <a href="{{ ingress_path }}/settings">Einstellungen</a>
         <a href="{{ ingress_path }}/groups">Gruppen</a>
-        <a href="{{ ingress_path }}/templates">Templates</a>
+        <a href="{{ ingress_path }}/templates">HTML Templates</a>
         <a href="{{ ingress_path }}/report">Testbericht</a>
       </nav>
     </div>
@@ -31,38 +32,5 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
-  <script>
-    function toggleDisplay(selectId, targetId, visibleValue) {
-      const select = document.getElementById(selectId);
-      const target = document.getElementById(targetId);
-      if (!select || !target) return;
-      target.style.display = select.value === visibleValue ? "grid" : "none";
-    }
-    function refreshGroupVisibility() {
-      const senderMode = document.getElementById("sender_mode");
-      const htmlMode = document.getElementById("html_mode");
-      const emailMode = document.getElementById("email_mode");
-      const billingScope = document.getElementById("billing_mode_scope");
-
-      const senderFields = document.getElementById("custom_sender_fields");
-      const htmlFields = document.getElementById("custom_html_fields");
-      const emailFields = document.getElementById("custom_email_fields");
-      const billingFields = document.getElementById("custom_billing_fields");
-
-      const senderCustom = senderMode && senderMode.value === "custom";
-
-      if (senderFields) senderFields.style.display = senderCustom ? "grid" : "none";
-      if (htmlFields) htmlFields.style.display = senderCustom && htmlMode && htmlMode.value === "custom" ? "grid" : "none";
-      if (emailFields) emailFields.style.display = emailMode && emailMode.value === "custom" ? "grid" : "none";
-      if (billingFields) billingFields.style.display = billingScope && billingScope.value === "custom" ? "grid" : "none";
-    }
-    document.addEventListener("DOMContentLoaded", function () {
-      ["sender_mode", "html_mode", "email_mode", "billing_mode_scope"].forEach(function(id) {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener("change", refreshGroupVisibility);
-      });
-      refreshGroupVisibility();
-    });
-  </script>
 </body>
 </html>
