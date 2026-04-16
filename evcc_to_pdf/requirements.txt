@@ -1,5 +1,6 @@
 flask
 requests
 pandas
-paho-mqtt
 weasyprint
+jinja2
+paho-mqtt

@@ -1,10 +1,10 @@
 name: "EVCC to PDF"
-description: "EVCC Abrechnung mit PDF, Mailversand und Scheduler"
-version: "0.5.1"
+description: "EVCC Abrechnung mit Weboberfläche, PDF und E-Mail-Versand"
+version: "0.5.3"
 slug: "evcc_to_pdf"
 url: "https://github.com/fbo1982/evcc_to_pdf_addon"
 startup: services
-boot: manual
+boot: auto
 init: false
 
 arch:
@@ -31,7 +31,7 @@ options:
 
 schema:
   mqtt_host: str
-  mqtt_port: int
+  mqtt_port: port
   mqtt_user: str?
   mqtt_password: password?
   mqtt_base_topic: str

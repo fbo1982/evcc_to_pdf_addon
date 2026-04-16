@@ -1,4 +1,3 @@
-
 {% extends "layout.html" %}
 {% block content %}
 <form method="post" action="{{ ingress_path }}/settings" class="stack">
@@ -19,22 +18,7 @@
       <label><span>PLZ</span><input type="text" name="sender_zip" value="{{ settings.sender.zip }}"></label>
       <label><span>Ort</span><input type="text" name="sender_city" value="{{ settings.sender.city }}"></label>
       <label><span>Netzstrompreis €/kWh</span><input type="text" name="grid_price" value="{{ settings.reporting.grid_price }}"></label>
-      <label><span>Default-Abrechnungsmodus</span>
-        <select name="billing_mode">
-          {% for val,label in [('monthly','Monatlich'),('quarterly','Quartal'),('semiannual','Halbjährlich'),('annual','Jährlich')] %}
-          <option value="{{ val }}" {% if settings.reporting.billing_mode == val %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label><span>Default-HTML-Template</span>
-        <select name="default_template_key">
-          {% for key,tpl in settings.templates.items() %}
-          <option value="{{ key }}" {% if settings.reporting.default_template_key == key %}selected{% endif %}>{{ tpl.label }}</option>
-          {% endfor %}
-        </select>
-      </label>
     </div>
-    <label><span>Default E-Mail-Inhalt</span><textarea name="default_email_body" rows="8">{{ settings.reporting.default_email_body }}</textarea></label>
   </section>
 
   <section class="card">
@@ -59,9 +43,27 @@
   </section>
 
   <section class="card">
+    <h2>Standard</h2>
+    <div class="form-grid">
+      <label>
+        <span>Abrechnungsmodus</span>
+        <select name="default_billing_mode">
+          {% for key, label in [("monthly","Monatlich"),("quarterly","Quartal"),("halfyearly","Halbjährlich"),("yearly","Jährlich")] %}
+            <option value="{{ key }}" {% if settings.reporting.default_billing_mode == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <label>
+      <span>Standard E-Mail-Inhalt</span>
+      <textarea name="default_email_body" rows="6">{{ settings.reporting.default_email_body }}</textarea>
+    </label>
+  </section>
+
+  <section class="card">
     <h2>Scheduler</h2>
     <div class="form-grid">
-      <label class="checkbox"><input type="checkbox" name="scheduler_enabled" {% if settings.scheduler.enabled %}checked{% endif %}><span>Aktiv</span></label>
+      <label class="checkbox"><input type="checkbox" name="scheduler_enabled" {% if settings.scheduler.enabled %}checked{% endif %}><span>Scheduler aktivieren</span></label>
       <label><span>Tag im Monat</span><input type="number" min="1" max="28" name="scheduler_day_of_month" value="{{ settings.scheduler.day_of_month }}"></label>
       <label><span>Uhrzeit</span><input type="time" name="scheduler_time" value="{{ settings.scheduler.time }}"></label>
     </div>

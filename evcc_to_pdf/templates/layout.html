@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="de">
 <head>
@@ -6,6 +5,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{ title or "EVCC to PDF" }}</title>
   <link rel="stylesheet" href="{{ ingress_path }}/static/style.css">
+  <script>
+    function toggleSection(selectId, value, targetId) {
+      const el = document.getElementById(selectId);
+      const target = document.getElementById(targetId);
+      if (!el || !target) return;
+      target.style.display = el.value === value ? 'block' : 'none';
+    }
+  </script>
 </head>
 <body>
   <header class="topbar">

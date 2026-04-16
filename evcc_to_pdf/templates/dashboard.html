@@ -1,42 +1,30 @@
-
 {% extends "layout.html" %}
 {% block content %}
 <section class="card">
   <h2>Status</h2>
   <ul class="stats">
-    <li><strong>Gespeicherte Fahrzeuge:</strong> {{ settings.cached_assets.vehicles|length }}</li>
-    <li><strong>Gespeicherte Ladekarten:</strong> {{ settings.cached_assets.cards|length }}</li>
+    <li><strong>Gespeicherte Assets:</strong> {{ settings.cached_assets|length }}</li>
     <li><strong>Gruppen:</strong> {{ settings.groups|length }}</li>
+    <li><strong>Templates:</strong> {{ settings.templates|length }}</li>
     <li><strong>Scheduler:</strong> {{ "aktiv" if settings.scheduler.enabled else "inaktiv" }}</li>
     <li><strong>EVCC URL:</strong> {{ settings.evcc.url or "nicht gesetzt" }}</li>
+    <li><strong>MQTT Base:</strong> {{ "siehe Add-on Optionen" }}</li>
   </ul>
-  <form method="post" action="{{ ingress_path }}/refresh_vehicles">
-    <button type="submit">Fahrzeuge aus EVCC laden</button>
+  <form method="post" action="{{ ingress_path }}/refresh_assets">
+    <button type="submit">Fahrzeuge aktualisieren</button>
   </form>
 </section>
+
 <section class="card">
-  <h2>Geladene Fahrzeuge</h2>
-  <div class="two-list">
-    <div>
-      <h3>🚗 Fahrzeuge</h3>
-      {% if settings.cached_assets.vehicles %}
-      <div class="chips">
-        {% for item in settings.cached_assets.vehicles %}
-        <span class="chip">{{ item }}</span>
-        {% endfor %}
-      </div>
-      {% else %}<p>Noch keine Fahrzeuge geladen.</p>{% endif %}
+  <h2>Geladene Fahrzeuge / Karten</h2>
+  {% if settings.cached_assets %}
+    <div class="chips">
+      {% for vehicle in settings.cached_assets %}
+        <span class="chip">{{ vehicle }}</span>
+      {% endfor %}
     </div>
-    <div>
-      <h3>💳 Ladekarten</h3>
-      {% if settings.cached_assets.cards %}
-      <div class="chips">
-        {% for item in settings.cached_assets.cards %}
-        <span class="chip">{{ item }}</span>
-        {% endfor %}
-      </div>
-      {% else %}<p>Noch keine Ladekarten geladen.</p>{% endif %}
-    </div>
-  </div>
+  {% else %}
+    <p>Noch keine Einträge geladen.</p>
+  {% endif %}
 </section>
 {% endblock %}

@@ -1,6 +1,9 @@
 import json
+import mimetypes
 import os
+import re
 import smtplib
+import ssl
 import threading
 import time
 import uuid
@@ -14,121 +17,161 @@ import paho.mqtt.client as mqtt
 import requests
 from flask import Flask, flash, redirect, render_template, request
 from jinja2 import Template
-from weasyprint import HTML
 from werkzeug.middleware.proxy_fix import ProxyFix
+from weasyprint import HTML
+
 
 APP_PORT = 8099
 SETTINGS_DIR = Path("/addon_config/evcc_to_pdf")
 SETTINGS_FILE = SETTINGS_DIR / "settings.json"
-RUNTIME_STATE_FILE = SETTINGS_DIR / "runtime_state.json"
 REPORT_DIR = Path("/share/evcc-pdfs")
 OPTIONS_FILE = Path("/data/options.json")
+LOCK = threading.Lock()
 
-DEFAULT_SETTINGS = {
-    "evcc": {"url": "", "password": ""},
-    "sender": {"name": "", "street": "", "zip": "", "city": "", "email": ""},
-    "smtp": {"host": "", "port": 587, "user": "", "password": "", "tls": True},
-    "scheduler": {"enabled": False, "day_of_month": 1, "time": "07:00"},
-    "bank": {"recipient": "", "iban": "", "bic": "", "institute": ""},
-    "reporting": {
-        "grid_price": 0.0,
-        "billing_mode": "monthly",
-        "default_email_body": "",
-        "default_template_key": "default",
-    },
-    "cached_assets": {"assets": []},
-    "groups": [],
-    "templates": {
-        "default": {
-            "label": "Standard HTML",
-            "content": """<!doctype html>
+DEFAULT_TEMPLATE_KEY = "default"
+DEFAULT_TEMPLATE_LABEL = "Standard HTML"
+
+DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="utf-8">
-<style>
-@page { size: A4; margin: 16mm 14mm 18mm 18mm; }
-body { font-family: Arial, sans-serif; font-size: 11px; color: #222; }
-.small { font-size: 9px; color: #666; }
-.header { margin-bottom: 18px; }
-.sender-line { font-size: 9px; color: #666; margin-bottom: 12px; }
-.address-wrap { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
-.address { width: 48%; }
-h1 { font-size: 20px; margin: 18px 0 8px; }
-h2 { font-size: 13px; margin: 18px 0 6px; }
-table.meta { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-table.meta td { padding: 2px 0; vertical-align: top; }
-table.positions { width: 100%; border-collapse: collapse; margin-top: 10px; }
-table.positions th, table.positions td { border: 1px solid #cfd8e3; padding: 6px; }
-table.positions th { background: #eef3f8; text-align: left; }
-table.positions td.num { text-align: right; }
-.summary { margin-top: 14px; width: 100%; }
-.summary td { padding: 3px 0; }
-.summary td.num { text-align: right; }
-.bank { margin-top: 18px; }
-.footer { margin-top: 24px; font-size: 9px; color: #666; }
-</style>
+  <meta charset="utf-8">
+  <style>
+    @page { size: A4; margin: 18mm 14mm 18mm 14mm; }
+    body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 11pt; color: #111; }
+    .header { display: table; width: 100%; margin-bottom: 30px; }
+    .col { display: table-cell; width: 50%; vertical-align: top; }
+    .right { text-align: right; }
+    .muted { color: #555; }
+    .period { margin: 18px 0 14px; font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 10.5pt; }
+    th, td { border: 1px solid #666; padding: 6px 7px; vertical-align: top; }
+    th { background: #efefef; text-align: left; }
+    .summary { margin-top: 16px; }
+    .summary p { margin: 5px 0; }
+    .bank { margin-top: 24px; }
+    .footer { margin-top: 28px; }
+  </style>
 </head>
 <body>
   <div class="header">
-    <div class="sender-line">{{ sender_name }} · {{ sender_street }} · {{ sender_zip }} {{ sender_city }} · {{ sender_email }}</div>
-    <div class="address-wrap">
-      <div class="address">
-        <strong>{{ recipient_company }}</strong><br>
-        {% if recipient_name %}{{ recipient_name }}<br>{% endif %}
-        {{ recipient_street }}<br>
-        {{ recipient_zip }} {{ recipient_city }}
-      </div>
-      <div class="address">
-        <table class="meta">
-          <tr><td><strong>Rechnung</strong></td><td>{{ group_name }}</td></tr>
-          <tr><td><strong>Zeitraum</strong></td><td>{{ period_label }}</td></tr>
-          <tr><td><strong>Erstellt</strong></td><td>{{ generated_at }}</td></tr>
-          <tr><td><strong>Absender</strong></td><td>{{ sender_name }}</td></tr>
-        </table>
-      </div>
+    <div class="col">
+      <strong>{{ recipient.company or recipient.name }}</strong><br>
+      {{ recipient.name }}<br>
+      {{ recipient.street }}<br>
+      {{ recipient.zip }} {{ recipient.city }}<br>
+      {{ recipient.email }}
     </div>
-    <h1>Abrechnung Ladevorgänge</h1>
-    <div class="small">Ausgewählte Fahrzeuge / Ladekarten: {{ assets_label }}</div>
+    <div class="col right">
+      <strong>{{ sender.name }}</strong><br>
+      {{ sender.street }}<br>
+      {{ sender.zip }} {{ sender.city }}<br>
+      {{ sender.email }}<br><br>
+      {{ invoice_date }}
+    </div>
   </div>
 
-  <div>
-    {{ positions_table | safe }}
-  </div>
+  <div class="period">{{ billing_mode_label }} – {{ period_label }}</div>
 
-  <table class="summary">
-    <tr><td><strong>Gesamt geladene kWh</strong></td><td class="num">{{ total_energy }} kWh</td></tr>
-    <tr><td><strong>Gesamtbetrag</strong></td><td class="num"><strong>{{ total_price }} €</strong></td></tr>
+  <table>
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Startzeit</th>
+        <th>Endzeit</th>
+        <th>Fahrzeug</th>
+        <th>Geladene kWh</th>
+        <th>Kosten (€)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ rows_html|safe }}
+    </tbody>
   </table>
 
-  <div class="bank">
-    <h2>Bankverbindung</h2>
-    <table class="meta">
-      <tr><td><strong>Empfänger</strong></td><td>{{ bank_recipient }}</td></tr>
-      <tr><td><strong>IBAN</strong></td><td>{{ bank_iban }}</td></tr>
-      <tr><td><strong>BIC</strong></td><td>{{ bank_bic }}</td></tr>
-      <tr><td><strong>Kreditinstitut</strong></td><td>{{ bank_institute }}</td></tr>
-    </table>
+  <div class="summary">
+    <p><strong>Gesamt geladene kWh:</strong> {{ total_energy_kwh }}</p>
+    <p><strong>Gesamtkosten:</strong> {{ total_cost_eur }}</p>
   </div>
 
-  <div class="footer">Bitte überweisen Sie den Rechnungsbetrag unter Angabe des Zeitraums {{ period_label }}.</div>
+  <div class="bank">
+    <p>Ich bitte um Begleichung der Kosten für den entsprechenden Zeitraum auf folgendes Konto:</p>
+    <p>
+      {{ bank.recipient }}<br>
+      IBAN: {{ bank.iban }}<br>
+      BIC: {{ bank.bic }}<br>
+      {{ bank.institute }}
+    </p>
+  </div>
+
+  <div class="footer">
+    <p>{{ email_body|replace('\n', '<br>')|safe }}</p>
+    <p>Mit freundlichen Grüßen</p>
+    <p>{{ sender.name }}</p>
+  </div>
 </body>
 </html>"""
+
+
+DEFAULT_SETTINGS = {
+    "evcc": {
+        "url": "",
+        "password": "",
+    },
+    "sender": {
+        "name": "",
+        "street": "",
+        "zip": "",
+        "city": "",
+        "email": "",
+    },
+    "smtp": {
+        "host": "",
+        "port": 587,
+        "user": "",
+        "password": "",
+        "tls": True,
+    },
+    "bank": {
+        "recipient": "",
+        "iban": "",
+        "bic": "",
+        "institute": "",
+    },
+    "scheduler": {
+        "enabled": False,
+        "day_of_month": 1,
+        "time": "07:00",
+        "last_run": "",
+    },
+    "reporting": {
+        "grid_price": 0.0,
+        "default_billing_mode": "monthly",
+        "default_email_body": "Bitte überweisen Sie den offenen Betrag auf das unten angegebene Konto.",
+    },
+    "cached_assets": [],
+    "groups": [],
+    "templates": {
+        DEFAULT_TEMPLATE_KEY: {
+            "key": DEFAULT_TEMPLATE_KEY,
+            "label": DEFAULT_TEMPLATE_LABEL,
+            "content": DEFAULT_TEMPLATE_HTML,
         }
     },
+    "default_template_key": DEFAULT_TEMPLATE_KEY,
 }
+
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "evcc-to-pdf-secret")
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
-scheduler_started = False
 
 
-def ensure_dirs() -> None:
+def ensure_dirs():
     SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def load_addon_options() -> dict:
+def load_addon_options():
     if not OPTIONS_FILE.exists():
         return {
             "mqtt_host": "core-mosquitto",
@@ -137,583 +180,326 @@ def load_addon_options() -> dict:
             "mqtt_password": "",
             "mqtt_base_topic": "/evcc2pdf",
         }
-    with OPTIONS_FILE.open("r", encoding="utf-8") as f:
-        data = json.load(f)
-    return {
-        "mqtt_host": str(data.get("mqtt_host", "core-mosquitto")),
-        "mqtt_port": int(data.get("mqtt_port", 1883) or 1883),
-        "mqtt_user": str(data.get("mqtt_user", "")),
-        "mqtt_password": str(data.get("mqtt_password", "")),
-        "mqtt_base_topic": str(data.get("mqtt_base_topic", "/evcc2pdf") or "/evcc2pdf"),
-    }
+    try:
+        return json.loads(OPTIONS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {
+            "mqtt_host": "core-mosquitto",
+            "mqtt_port": 1883,
+            "mqtt_user": "",
+            "mqtt_password": "",
+            "mqtt_base_topic": "/evcc2pdf",
+        }
 
 
-def mqtt_topic(name: str) -> str:
-    base = load_addon_options()["mqtt_base_topic"].rstrip("/")
-    return f"{base}/{name.lstrip('/')}"
+def deep_merge(base, override):
+    if isinstance(base, dict) and isinstance(override, dict):
+        merged = deepcopy(base)
+        for key, value in override.items():
+            if key in merged:
+                merged[key] = deep_merge(merged[key], value)
+            else:
+                merged[key] = deepcopy(value)
+        return merged
+    return deepcopy(override)
 
 
-def local_raw_settings() -> dict | None:
-    ensure_dirs()
-    if SETTINGS_FILE.exists():
-        with SETTINGS_FILE.open("r", encoding="utf-8") as f:
-            return json.load(f)
-    return None
-
-
-def local_runtime_state() -> dict:
-    ensure_dirs()
-    if RUNTIME_STATE_FILE.exists():
-        try:
-            return json.loads(RUNTIME_STATE_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {"last_auto_send": {}}
-
-
-def save_runtime_state(state: dict) -> None:
-    ensure_dirs()
-    RUNTIME_STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
-
-
-def extract_name(value):
-    if isinstance(value, str):
-        return value.strip()
-    if isinstance(value, dict):
-        for key in ("title", "name", "vehicle", "label", "id"):
-            if key in value and value[key]:
-                return str(value[key]).strip()
-        return ""
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def normalize_assets(items) -> list[str]:
-    out = []
-    seen = set()
-    for item in items or []:
-        name = extract_name(item)
-        if name and name not in seen:
-            seen.add(name)
-            out.append(name)
-    return out
-
-
-def parse_bool(value) -> bool:
-    return str(value).lower() in {"1", "true", "on", "yes"}
-
-
-def normalize_group(group: dict) -> dict:
-    template_choice = str(group.get("template_choice", "default") or "default").strip() or "default"
-    return {
-        "id": str(group.get("id") or uuid.uuid4()),
-        "name": str(group.get("name", "")).strip(),
-        "recipient_name": str(group.get("recipient_name", "")).strip(),
-        "recipient_company": str(group.get("recipient_company", "")).strip(),
-        "recipient_email": str(group.get("recipient_email", "")).strip(),
-        "recipient_street": str(group.get("recipient_street", "")).strip(),
-        "recipient_zip": str(group.get("recipient_zip", "")).strip(),
-        "recipient_city": str(group.get("recipient_city", "")).strip(),
-        "assets": normalize_assets(group.get("assets", [])),
-        "grid_price_override": str(group.get("grid_price_override", "")).strip(),
-        "active": bool(group.get("active", False)),
-        "sender_mode": str(group.get("sender_mode", "default") or "default"),
-        "custom_sender": {
-            "name": str(group.get("custom_sender", {}).get("name", "")).strip(),
-            "street": str(group.get("custom_sender", {}).get("street", "")).strip(),
-            "zip": str(group.get("custom_sender", {}).get("zip", "")).strip(),
-            "city": str(group.get("custom_sender", {}).get("city", "")).strip(),
-            "email": str(group.get("custom_sender", {}).get("email", "")).strip(),
-        },
-        "bank_mode": str(group.get("bank_mode", "default") or "default"),
-        "custom_bank": {
-            "recipient": str(group.get("custom_bank", {}).get("recipient", "")).strip(),
-            "iban": str(group.get("custom_bank", {}).get("iban", "")).strip(),
-            "bic": str(group.get("custom_bank", {}).get("bic", "")).strip(),
-            "institute": str(group.get("custom_bank", {}).get("institute", "")).strip(),
-        },
-        "template_choice": template_choice,
-        "email_body_mode": str(group.get("email_body_mode", "default") or "default"),
-        "custom_email_body": str(group.get("custom_email_body", "") or ""),
-        "billing_mode_source": str(group.get("billing_mode_source", "default") or "default"),
-        "custom_billing_mode": str(group.get("custom_billing_mode", "monthly") or "monthly"),
-        "custom_send_day": int(group.get("custom_send_day", 1) or 1),
-    }
-
-
-def normalize_settings(loaded: dict | None) -> dict:
-    settings = deepcopy(DEFAULT_SETTINGS)
-    loaded = loaded or {}
-    for section in ("evcc", "sender", "smtp", "scheduler", "bank", "reporting"):
-        if isinstance(loaded.get(section), dict):
-            settings[section].update(loaded[section])
-    settings["cached_assets"]["assets"] = normalize_assets((loaded.get("cached_assets") or {}).get("assets", loaded.get("cached_assets", {}).get("vehicles", loaded.get("cached_vehicles", []))))
-    raw_groups = loaded.get("groups", [])
-    if isinstance(raw_groups, list):
-        settings["groups"] = [normalize_group(g) for g in raw_groups if isinstance(g, dict)]
-    raw_templates = loaded.get("templates", {})
-    if isinstance(raw_templates, dict):
-        templates = {}
-        for key, value in raw_templates.items():
-            if isinstance(value, dict):
-                templates[str(key)] = {
-                    "label": str(value.get("label", key)).strip() or str(key),
-                    "content": str(value.get("content", "") or ""),
-                }
-            elif isinstance(value, str):
-                templates[str(key)] = {"label": str(key), "content": value}
-        if templates:
-            settings["templates"] = templates
-    if settings["reporting"]["default_template_key"] not in settings["templates"]:
-        settings["reporting"]["default_template_key"] = next(iter(settings["templates"].keys()))
-    return settings
-
-
-def save_local_settings(settings: dict) -> None:
+def save_local_settings(settings):
     ensure_dirs()
     SETTINGS_FILE.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def mqtt_fetch_settings() -> dict | None:
-    opts = load_addon_options()
-    payload_holder = {"payload": None}
-
-    def on_connect(client, userdata, flags, reason_code, properties=None):
-        client.subscribe(mqtt_topic("config/settings"))
-
-    def on_message(client, userdata, msg):
+def load_local_settings():
+    ensure_dirs()
+    if SETTINGS_FILE.exists():
         try:
-            payload_holder["payload"] = msg.payload.decode("utf-8")
+            return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
         except Exception:
-            payload_holder["payload"] = None
-        client.disconnect()
-
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
-    if opts["mqtt_user"]:
-        client.username_pw_set(opts["mqtt_user"], opts["mqtt_password"])
-    client.on_connect = on_connect
-    client.on_message = on_message
-    client.connect(opts["mqtt_host"], opts["mqtt_port"], 10)
-    client.loop_start()
-    timeout = time.time() + 2.0
-    while time.time() < timeout and payload_holder["payload"] is None:
-        time.sleep(0.05)
-    client.loop_stop()
-    if payload_holder["payload"]:
-        try:
-            return json.loads(payload_holder["payload"])
-        except json.JSONDecodeError:
             return None
     return None
 
 
-def mqtt_publish_settings(settings: dict) -> None:
-    opts = load_addon_options()
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
-    if opts["mqtt_user"]:
-        client.username_pw_set(opts["mqtt_user"], opts["mqtt_password"])
-    client.connect(opts["mqtt_host"], opts["mqtt_port"], 10)
-    client.publish(mqtt_topic("config/settings"), json.dumps(settings, ensure_ascii=False), qos=1, retain=True)
-    client.disconnect()
+def mqtt_topics(base_topic):
+    bt = base_topic.rstrip("/")
+    return {
+        "global": f"{bt}/config/global",
+        "groups": f"{bt}/config/groups",
+        "templates": f"{bt}/config/templates",
+    }
 
 
-def load_settings() -> dict:
-    local = normalize_settings(local_raw_settings())
+def mqtt_load_payload(topic):
+    options = load_addon_options()
+    data = {"payload": None}
+
     try:
-        remote_raw = mqtt_fetch_settings()
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        if options.get("mqtt_user"):
+            client.username_pw_set(options.get("mqtt_user", ""), options.get("mqtt_password", ""))
+        client.connect(options.get("mqtt_host", "core-mosquitto"), int(options.get("mqtt_port", 1883)), 15)
+
+        def on_message(client, userdata, msg):
+            userdata["payload"] = msg.payload.decode("utf-8") if msg.payload else ""
+
+        client.user_data_set(data)
+        client.on_message = on_message
+        client.subscribe(topic)
+        client.loop_start()
+        time.sleep(0.6)
+        client.loop_stop()
+        client.disconnect()
     except Exception:
-        remote_raw = None
-    if remote_raw:
-        remote = normalize_settings(remote_raw)
-        save_local_settings(remote)
-        return remote
-    save_local_settings(local)
+        return None
+
+    return data["payload"]
+
+
+def mqtt_publish(topic, payload):
+    options = load_addon_options()
     try:
-        mqtt_publish_settings(local)
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        if options.get("mqtt_user"):
+            client.username_pw_set(options.get("mqtt_user", ""), options.get("mqtt_password", ""))
+        client.connect(options.get("mqtt_host", "core-mosquitto"), int(options.get("mqtt_port", 1883)), 15)
+        client.publish(topic, payload=payload, qos=1, retain=True)
+        client.disconnect()
+        return True
     except Exception:
-        pass
-    return local
+        return False
 
 
-def save_settings(settings: dict) -> None:
+def normalize_template_dict(templates):
+    out = {}
+    if not isinstance(templates, dict):
+        templates = {}
+    for key, value in templates.items():
+        if not isinstance(value, dict):
+            continue
+        tpl_key = str(value.get("key") or key).strip()
+        if not tpl_key:
+            continue
+        out[tpl_key] = {
+            "key": tpl_key,
+            "label": str(value.get("label") or tpl_key).strip(),
+            "content": str(value.get("content") or "").strip(),
+        }
+    if DEFAULT_TEMPLATE_KEY not in out:
+        out[DEFAULT_TEMPLATE_KEY] = {
+            "key": DEFAULT_TEMPLATE_KEY,
+            "label": DEFAULT_TEMPLATE_LABEL,
+            "content": DEFAULT_TEMPLATE_HTML,
+        }
+    if not out[DEFAULT_TEMPLATE_KEY]["content"].strip():
+        out[DEFAULT_TEMPLATE_KEY]["content"] = DEFAULT_TEMPLATE_HTML
+    return out
+
+
+def normalize_group(group):
+    base = {
+        "id": str(uuid.uuid4()),
+        "active": True,
+        "name": "",
+        "recipient_name": "",
+        "recipient_company": "",
+        "recipient_email": "",
+        "recipient_street": "",
+        "recipient_zip": "",
+        "recipient_city": "",
+        "vehicles": [],
+        "grid_price_override": "",
+        "sender_mode": "default",
+        "custom_sender": {"name": "", "email": "", "street": "", "zip": "", "city": ""},
+        "html_mode": "default",
+        "selected_template_key": DEFAULT_TEMPLATE_KEY,
+        "email_body_mode": "default",
+        "custom_email_body": "",
+        "billing_mode_mode": "default",
+        "custom_billing_mode": "monthly",
+        "send_day": 1,
+        "sender_copy_enabled": False,
+        "bank_mode": "default",
+        "custom_bank": {"recipient": "", "iban": "", "bic": "", "institute": ""},
+    }
+    merged = deep_merge(base, group or {})
+    if not isinstance(merged.get("vehicles"), list):
+        merged["vehicles"] = []
+    merged["vehicles"] = [str(v) for v in merged["vehicles"] if str(v).strip()]
+    return merged
+
+
+def normalize_settings(raw):
+    settings = deep_merge(DEFAULT_SETTINGS, raw or {})
+    if "templates" not in settings:
+        settings["templates"] = {}
+    settings["templates"] = normalize_template_dict(settings["templates"])
+    if settings.get("default_template_key") not in settings["templates"]:
+        settings["default_template_key"] = DEFAULT_TEMPLATE_KEY
+    settings["groups"] = [normalize_group(g) for g in settings.get("groups", [])]
+    assets = settings.get("cached_assets", [])
+    if not isinstance(assets, list):
+        assets = []
+    settings["cached_assets"] = [str(v) for v in assets if str(v).strip()]
+    return settings
+
+
+def load_settings():
+    ensure_dirs()
+    options = load_addon_options()
+    topics = mqtt_topics(options.get("mqtt_base_topic", "/evcc2pdf"))
+
+    local_raw = load_local_settings()
+    local_settings = normalize_settings(local_raw) if local_raw else None
+
+    mqtt_global = mqtt_load_payload(topics["global"])
+    mqtt_groups = mqtt_load_payload(topics["groups"])
+    mqtt_templates = mqtt_load_payload(topics["templates"])
+
+    mqtt_ready = any([mqtt_global, mqtt_groups, mqtt_templates])
+    if mqtt_ready:
+        combined = deepcopy(DEFAULT_SETTINGS)
+        try:
+            if mqtt_global:
+                combined = deep_merge(combined, json.loads(mqtt_global))
+        except Exception:
+            pass
+        try:
+            if mqtt_groups:
+                combined["groups"] = json.loads(mqtt_groups)
+        except Exception:
+            pass
+        try:
+            if mqtt_templates:
+                combined["templates"] = json.loads(mqtt_templates)
+        except Exception:
+            pass
+        settings = normalize_settings(combined)
+        save_local_settings(settings)
+        return settings
+
+    if local_settings:
+        sync_settings_to_mqtt(local_settings)
+        return local_settings
+
+    settings = normalize_settings(DEFAULT_SETTINGS)
+    save_local_settings(settings)
+    sync_settings_to_mqtt(settings)
+    return settings
+
+
+def sync_settings_to_mqtt(settings):
+    options = load_addon_options()
+    topics = mqtt_topics(options.get("mqtt_base_topic", "/evcc2pdf"))
+    global_payload = deepcopy(settings)
+    groups_payload = global_payload.pop("groups", [])
+    templates_payload = global_payload.pop("templates", {})
+
+    mqtt_publish(topics["global"], json.dumps(global_payload, ensure_ascii=False))
+    mqtt_publish(topics["groups"], json.dumps(groups_payload, ensure_ascii=False))
+    mqtt_publish(topics["templates"], json.dumps(templates_payload, ensure_ascii=False))
+
+
+def save_settings(settings):
     normalized = normalize_settings(settings)
     save_local_settings(normalized)
+    sync_settings_to_mqtt(normalized)
+
+
+def parse_bool(value):
+    return str(value).lower() in {"1", "true", "on", "yes"}
+
+
+def parse_float(value, fallback=0.0):
     try:
-        mqtt_publish_settings(normalized)
+        return float(str(value).strip().replace(",", "."))
     except Exception:
-        pass
+        return fallback
 
 
-def ingress_path() -> str:
-    return request.headers.get("X-Ingress-Path", "").rstrip("/")
+def parse_int(value, fallback=0):
+    try:
+        return int(str(value).strip())
+    except Exception:
+        return fallback
 
 
-def evcc_session(settings: dict) -> requests.Session:
+def extract_name(value):
+    if isinstance(value, dict):
+        for key in ("title", "name", "id", "uid"):
+            if value.get(key):
+                return str(value.get(key))
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
+
+
+def evcc_session(settings):
     session = requests.Session()
     base_url = str(settings["evcc"].get("url", "")).rstrip("/")
     password = str(settings["evcc"].get("password", ""))
+
     if not base_url:
         raise ValueError("EVCC-URL ist leer.")
+
     if password:
-        response = session.post(f"{base_url}/api/auth/login", json={"password": password}, timeout=15)
+        login_url = f"{base_url}/api/auth/login"
+        response = session.post(login_url, json={"password": password}, timeout=15)
         response.raise_for_status()
+
     return session
 
 
-def fetch_sessions(settings: dict) -> list[dict]:
-    session = evcc_session(settings)
+def fetch_sessions(settings):
     base_url = str(settings["evcc"].get("url", "")).rstrip("/")
+    session = evcc_session(settings)
     response = session.get(f"{base_url}/api/sessions", timeout=30)
     response.raise_for_status()
     data = response.json()
-    result = data["result"] if isinstance(data, dict) and "result" in data else data
+    if isinstance(data, dict) and "result" in data:
+        result = data["result"]
+    else:
+        result = data
     if not isinstance(result, list):
         raise ValueError("Unerwartete Antwort von EVCC bei /api/sessions")
     return result
 
 
-def fetch_state(settings: dict) -> dict:
-    session = evcc_session(settings)
+def fetch_available_assets(settings):
+    vehicles = set()
+    sessions = []
     base_url = str(settings["evcc"].get("url", "")).rstrip("/")
-    response = session.get(f"{base_url}/api/state", timeout=30)
-    response.raise_for_status()
-    data = response.json()
-    return data["result"] if isinstance(data, dict) and "result" in data else data
+    session = evcc_session(settings)
 
-
-def fetch_available_assets(settings: dict) -> list[str]:
-    assets = []
-    seen = set()
-    state = fetch_state(settings)
-    raw_vehicles = state.get("vehicles", [])
-    if isinstance(raw_vehicles, dict):
-        raw_vehicles = list(raw_vehicles.values())
-    for item in raw_vehicles:
-        name = extract_name(item)
-        if name and name not in seen:
-            seen.add(name)
-            assets.append(name)
-    for key in ("tags", "cards", "rfid", "tokens"):
-        raw_cards = state.get(key, [])
-        if isinstance(raw_cards, dict):
-            raw_cards = list(raw_cards.values())
-        if isinstance(raw_cards, list):
-            for item in raw_cards:
-                name = extract_name(item)
-                if name and name not in seen:
-                    seen.add(name)
-                    assets.append(name)
     try:
-        for s in fetch_sessions(settings):
-            name = extract_name(s.get("vehicle"))
-            if name and name not in seen:
-                seen.add(name)
-                assets.append(name)
+        state_response = session.get(f"{base_url}/api/state", timeout=15)
+        state_response.raise_for_status()
+        state_data = state_response.json()
+        result = state_data.get("result", {})
+        state_vehicles = result.get("vehicles", [])
+        if isinstance(state_vehicles, dict):
+            state_vehicles = list(state_vehicles.values())
+        for entry in state_vehicles:
+            name = extract_name(entry.get("title") or entry.get("name") or entry)
+            if name.strip():
+                vehicles.add(name.strip())
     except Exception:
         pass
-    return sorted(assets, key=lambda x: x.lower())
 
-
-def write_assets_cache(settings: dict) -> None:
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    assets = settings["cached_assets"].get("assets", [])
-    (REPORT_DIR / "available_assets.txt").write_text("\n".join(assets), encoding="utf-8")
-
-
-def billing_mode_label(value: str) -> str:
-    return {
-        "monthly": "Monatlich",
-        "quarterly": "Quartal",
-        "semiannual": "Halbjährlich",
-        "annual": "Jährlich",
-    }.get(value, value)
-
-
-def last_completed_period(billing_mode: str, ref: datetime | None = None) -> tuple[datetime, datetime, str]:
-    ref = ref or datetime.now()
-    if billing_mode == "monthly":
-        first_this_month = ref.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        end = first_this_month
-        start = (first_this_month - timedelta(days=1)).replace(day=1)
-        stamp = start.strftime("%Y-%m")
-    elif billing_mode == "quarterly":
-        current_q_start_month = ((ref.month - 1) // 3) * 3 + 1
-        current_q_start = datetime(ref.year, current_q_start_month, 1)
-        end = current_q_start
-        prev_end = current_q_start - timedelta(days=1)
-        start_month = ((prev_end.month - 1) // 3) * 3 + 1
-        start = datetime(prev_end.year, start_month, 1)
-        stamp = f"{start.year}-Q{((start.month - 1)//3)+1}"
-    elif billing_mode == "semiannual":
-        current_h_start_month = 1 if ref.month <= 6 else 7
-        current_h_start = datetime(ref.year, current_h_start_month, 1)
-        end = current_h_start
-        prev_end = current_h_start - timedelta(days=1)
-        start_month = 1 if prev_end.month <= 6 else 7
-        start = datetime(prev_end.year, start_month, 1)
-        stamp = f"{start.year}-H{'1' if start.month == 1 else '2'}"
-    else:
-        end = datetime(ref.year, 1, 1)
-        start = datetime(ref.year - 1, 1, 1)
-        stamp = f"{start.year}"
-    return start, end, stamp
-
-
-def manual_period(billing_mode: str, year: int, month: int) -> tuple[datetime, datetime, str]:
-    if billing_mode == "monthly":
-        start = datetime(year, month, 1)
-        end = datetime(year + (month // 12), ((month % 12) + 1), 1)
-        stamp = start.strftime("%Y-%m")
-    elif billing_mode == "quarterly":
-        qstart = ((month - 1) // 3) * 3 + 1
-        start = datetime(year, qstart, 1)
-        em = qstart + 3
-        ey = year + (1 if em > 12 else 0)
-        em = ((em - 1) % 12) + 1
-        end = datetime(ey, em, 1)
-        stamp = f"{start.year}-Q{((start.month - 1)//3)+1}"
-    elif billing_mode == "semiannual":
-        sstart = 1 if month <= 6 else 7
-        start = datetime(year, sstart, 1)
-        em = sstart + 6
-        ey = year + (1 if em > 12 else 0)
-        em = ((em - 1) % 12) + 1
-        end = datetime(ey, em, 1)
-        stamp = f"{start.year}-H{'1' if start.month == 1 else '2'}"
-    else:
-        start = datetime(year, 1, 1)
-        end = datetime(year + 1, 1, 1)
-        stamp = f"{year}"
-    return start, end, stamp
-
-
-def get_group_billing_mode(settings: dict, group: dict) -> str:
-    return group.get("custom_billing_mode") if group.get("billing_mode_source") == "custom" else settings["reporting"]["billing_mode"]
-
-
-def get_group_send_day(settings: dict, group: dict) -> int:
-    return int(group.get("custom_send_day", 1) or 1) if group.get("billing_mode_source") == "custom" else int(settings["scheduler"].get("day_of_month", 1) or 1)
-
-
-def get_grid_price(settings: dict, group: dict) -> float:
-    price = group.get("grid_price_override", "")
     try:
-        return float(str(price).replace(",", ".")) if str(price).strip() else float(settings["reporting"]["grid_price"])
+        sessions = fetch_sessions(settings)
     except Exception:
-        return float(settings["reporting"]["grid_price"])
+        sessions = []
+
+    for s in sessions:
+        value = s.get("vehicle")
+        if value:
+            name = extract_name(value).strip()
+            if name:
+                vehicles.add(name)
+
+    return sorted(vehicles, key=lambda x: x.lower())
 
 
-def get_sender(settings: dict, group: dict) -> dict:
-    if group.get("sender_mode") == "custom":
-        return group.get("custom_sender", {})
-    return settings.get("sender", {})
-
-
-def get_bank_details(settings: dict, group: dict) -> dict:
-    if group.get("bank_mode") == "custom":
-        return group.get("custom_bank", {})
-    return settings.get("bank", {})
-
-
-def get_email_body(settings: dict, group: dict, summary: dict) -> str:
-    raw = group.get("custom_email_body", "") if group.get("email_body_mode") == "custom" else settings["reporting"].get("default_email_body", "")
-    if not raw.strip():
-        raw = "Hallo,\n\nim Anhang befindet sich die EVCC-Abrechnung für {{ period_label }}.\n\nViele Grüße\n{{ sender_name }}"
-    return Template(raw).render(**summary)
-
-
-def get_template_key(settings: dict, group: dict) -> str:
-    choice = str(group.get("template_choice", "default") or "default")
-    if choice == "default":
-        return settings["reporting"]["default_template_key"]
-    if choice not in settings["templates"]:
-        return settings["reporting"]["default_template_key"]
-    return choice
-
-
-def format_period_label(start: datetime, end: datetime, billing_mode: str) -> str:
-    return f"{billing_mode_label(billing_mode)} {start.strftime('%d.%m.%Y')} bis {(end - timedelta(days=1)).strftime('%d.%m.%Y')}"
-
-
-def build_positions_table(df: pd.DataFrame) -> str:
-    rows = []
-    for _, row in df.iterrows():
-        start_dt = row["created"]
-        end_raw = row.get("finished") or row.get("updated") or row.get("end") or row.get("disconnected")
-        end_dt = pd.to_datetime(end_raw, errors="coerce", utc=True)
-        if pd.notna(end_dt):
-            end_dt = end_dt.tz_localize(None)
-        date_str = start_dt.strftime('%d.%m.%Y')
-        start_str = start_dt.strftime('%H:%M')
-        end_str = end_dt.strftime('%H:%M') if pd.notna(end_dt) else "-"
-        rows.append(
-            f"<tr><td>{date_str}</td><td>{start_str}</td><td>{end_str}</td><td>{row.get('vehicle','')}</td><td class='num'>{float(row.get('chargedEnergy',0)):.2f}</td><td class='num'>{float(row.get('price',0)):.2f}</td></tr>"
-        )
-    return (
-        "<table class='positions'><thead><tr><th>Datum</th><th>Startzeit</th><th>Endzeit</th><th>Fahrzeug</th><th>Geladene kWh</th><th>Kosten (€)</th></tr></thead>"
-        f"<tbody>{''.join(rows)}</tbody></table>"
-    )
-
-
-def collect_report_data(settings: dict, group: dict, start: datetime, end: datetime, period_stamp: str):
-    sessions = fetch_sessions(settings)
-    df = pd.DataFrame(sessions)
-    if df.empty:
-        raise ValueError("Keine Sessions gefunden.")
-    if "created" not in df.columns or "chargedEnergy" not in df.columns:
-        raise ValueError("EVCC-Sessions enthalten nicht die erwarteten Felder.")
-    df["created"] = pd.to_datetime(df["created"], errors="coerce", utc=True).dt.tz_localize(None)
-    df = df.dropna(subset=["created"])
-    df = df[(df["created"] >= start) & (df["created"] < end)]
-    selected = set(group.get("assets", []))
-    if "vehicle" in df.columns and selected:
-        df["vehicle"] = df["vehicle"].fillna("").astype(str)
-        df = df[df["vehicle"].isin(selected)]
-    if df.empty:
-        raise ValueError("Keine Sessions für die Auswahl gefunden.")
-    df["chargedEnergy"] = pd.to_numeric(df["chargedEnergy"], errors="coerce").fillna(0)
-    grid_price = get_grid_price(settings, group)
-    df["price"] = (df["chargedEnergy"] * grid_price).round(2)
-    df = df.sort_values("created", ascending=True)
-    billing_mode = get_group_billing_mode(settings, group)
-    sender = get_sender(settings, group)
-    bank = get_bank_details(settings, group)
-    summary = {
-        "group_name": group["name"],
-        "recipient_name": group.get("recipient_name", ""),
-        "recipient_company": group.get("recipient_company", ""),
-        "recipient_email": group.get("recipient_email", ""),
-        "sender_name": sender.get("name", ""),
-        "sender_email": sender.get("email", ""),
-        "sender_street": sender.get("street", ""),
-        "sender_zip": sender.get("zip", ""),
-        "sender_city": sender.get("city", ""),
-        "recipient_street": group.get("recipient_street", ""),
-        "recipient_zip": group.get("recipient_zip", ""),
-        "recipient_city": group.get("recipient_city", ""),
-        "bank_recipient": bank.get("recipient", ""),
-        "bank_iban": bank.get("iban", ""),
-        "bank_bic": bank.get("bic", ""),
-        "bank_institute": bank.get("institute", ""),
-        "period_label": format_period_label(start, end, billing_mode),
-        "period_stamp": period_stamp,
-        "assets_label": ", ".join(group.get("assets", [])),
-        "grid_price": f"{grid_price:.2f}",
-        "total_energy": f"{float(df['chargedEnergy'].sum()):.2f}",
-        "total_price": f"{float(df['price'].sum()):.2f}",
-        "generated_at": datetime.now().strftime("%d.%m.%Y %H:%M"),
-        "positions_table": build_positions_table(df),
-    }
-    return df, summary
-
-
-def create_report_files(settings: dict, group: dict, start: datetime, end: datetime, period_stamp: str):
-    df, summary = collect_report_data(settings, group, start, end, period_stamp)
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    safe_group = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in group["name"]).strip("_") or "gruppe"
-    base_name = f"evcc_{safe_group}_{period_stamp}"
-    txt_file = REPORT_DIR / f"{base_name}.txt"
-    pdf_file = REPORT_DIR / f"{base_name}.pdf"
-
-    txt_lines = [
-        "EVCC Abrechnung",
-        "================",
-        f"Gruppe: {summary['group_name']}",
-        f"Zeitraum: {summary['period_label']}",
-        f"Netzstrompreis: {summary['grid_price']} €/kWh",
-        "",
-    ]
-    for _, row in df.iterrows():
-        txt_lines.append(f"{row['created'].strftime('%Y-%m-%d %H:%M')} | {row.get('vehicle','')} | {float(row.get('chargedEnergy',0)):.2f} kWh | {float(row.get('price',0)):.2f} €")
-    txt_lines.extend(["", f"Gesamtenergie: {summary['total_energy']} kWh", f"Gesamtbetrag: {summary['total_price']} €"])
-    txt_file.write_text("\n".join(txt_lines), encoding="utf-8")
-
-    template_key = get_template_key(settings, group)
-    template_html = settings["templates"][template_key]["content"]
-    rendered_html = Template(template_html).render(**summary)
-    HTML(string=rendered_html).write_pdf(str(pdf_file))
-
-    return txt_file, pdf_file, summary
-
-
-def send_report_email(settings: dict, group: dict, pdf_file: Path, summary: dict):
-    smtp = settings["smtp"]
-    if not smtp.get("host") or not group.get("recipient_email"):
-        raise ValueError("SMTP oder Empfänger-E-Mail nicht vollständig konfiguriert.")
-    sender = get_sender(settings, group)
-    body = get_email_body(settings, group, summary)
-    msg = EmailMessage()
-    msg["Subject"] = f"EVCC Abrechnung - {summary['period_label']} - {group['name']}"
-    msg["From"] = sender.get("email") or smtp.get("user")
-    msg["To"] = group["recipient_email"]
-    msg.set_content(body)
-    msg.add_attachment(pdf_file.read_bytes(), maintype="application", subtype="pdf", filename=pdf_file.name)
-    server = smtplib.SMTP(smtp["host"], int(smtp.get("port", 587)), timeout=30)
-    try:
-        server.ehlo()
-        if smtp.get("tls"):
-            server.starttls()
-            server.ehlo()
-        if smtp.get("user"):
-            server.login(smtp["user"], smtp.get("password", ""))
-        server.send_message(msg)
-    finally:
-        try:
-            server.quit()
-        except Exception:
-            pass
-
-
-def auto_send_group(settings: dict, group: dict):
-    billing_mode = get_group_billing_mode(settings, group)
-    start, end, stamp = last_completed_period(billing_mode)
-    _, pdf_file, summary = create_report_files(settings, group, start, end, stamp)
-    send_report_email(settings, group, pdf_file, summary)
-    state = local_runtime_state()
-    state.setdefault("last_auto_send", {})[group["id"]] = stamp
-    save_runtime_state(state)
-
-
-def scheduler_loop():
-    while True:
-        try:
-            settings = load_settings()
-            if settings["scheduler"].get("enabled"):
-                now = datetime.now()
-                try:
-                    target_h, target_m = [int(x) for x in str(settings["scheduler"].get("time", "07:00")).split(":", 1)]
-                except Exception:
-                    target_h, target_m = 7, 0
-                state = local_runtime_state()
-                for group in settings.get("groups", []):
-                    if not group.get("active"):
-                        continue
-                    send_day = get_group_send_day(settings, group)
-                    if now.day != send_day:
-                        continue
-                    if (now.hour, now.minute) < (target_h, target_m):
-                        continue
-                    billing_mode = get_group_billing_mode(settings, group)
-                    _, _, stamp = last_completed_period(billing_mode, now)
-                    if state.setdefault("last_auto_send", {}).get(group["id"]) == stamp:
-                        continue
-                    try:
-                        auto_send_group(settings, group)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-        time.sleep(60)
-
-
-def start_scheduler_once():
-    global scheduler_started
-    if scheduler_started:
-        return
-    scheduler_started = True
-    thread = threading.Thread(target=scheduler_loop, daemon=True)
-    thread.start()
+def get_ingress_path():
+    return request.headers.get("X-Ingress-Path", "").rstrip("/")
 
 
 @app.context_processor
@@ -721,15 +507,311 @@ def inject_common():
     settings = load_settings()
     return {
         "settings": settings,
-        "ingress_path": ingress_path(),
-        "all_assets": settings.get("cached_assets", {}).get("assets", []),
+        "ingress_path": get_ingress_path(),
     }
+
+
+def find_group(settings, group_id):
+    for group in settings["groups"]:
+        if group.get("id") == group_id:
+            return group
+    return None
+
+
+def find_template(settings, key):
+    return settings["templates"].get(key)
+
+
+def period_for_mode(reference_date, mode):
+    ref = reference_date.replace(day=1)
+    if mode == "monthly":
+        end = ref - timedelta(days=1)
+        start = end.replace(day=1)
+        return start, end
+    if mode == "quarterly":
+        current_quarter = (ref.month - 1) // 3 + 1
+        end_quarter = current_quarter - 1
+        year = ref.year
+        if end_quarter == 0:
+            end_quarter = 4
+            year -= 1
+        start_month = (end_quarter - 1) * 3 + 1
+        start = datetime(year, start_month, 1)
+        if start_month == 10:
+            end = datetime(year, 12, 31)
+        else:
+            next_q = datetime(year, start_month + 3, 1)
+            end = next_q - timedelta(days=1)
+        return start, end
+    if mode == "halfyearly":
+        if ref.month <= 6:
+            year = ref.year - 1
+            start = datetime(year, 7, 1)
+            end = datetime(year, 12, 31)
+        else:
+            year = ref.year
+            start = datetime(year, 1, 1)
+            end = datetime(year, 6, 30)
+        return start, end
+    if mode == "yearly":
+        year = ref.year - 1
+        return datetime(year, 1, 1), datetime(year, 12, 31)
+    return period_for_mode(reference_date, "monthly")
+
+
+def billing_mode_label(mode):
+    return {
+        "monthly": "Monatliche Abrechnung",
+        "quarterly": "Quartalsabrechnung",
+        "halfyearly": "Halbjährliche Abrechnung",
+        "yearly": "Jährliche Abrechnung",
+    }.get(mode, "Abrechnung")
+
+
+def period_label(start, end):
+    return f"{start.strftime('%d.%m.%Y')} bis {end.strftime('%d.%m.%Y')}"
+
+
+def effective_sender(settings, group):
+    if group.get("sender_mode") == "custom":
+        return group.get("custom_sender", {})
+    return settings.get("sender", {})
+
+
+def effective_bank(settings, group):
+    if group.get("bank_mode") == "custom":
+        return group.get("custom_bank", {})
+    return settings.get("bank", {})
+
+
+def effective_email_body(settings, group):
+    if group.get("email_body_mode") == "custom":
+        return group.get("custom_email_body", "")
+    return settings.get("reporting", {}).get("default_email_body", "")
+
+
+def effective_billing_mode(settings, group):
+    if group.get("billing_mode_mode") == "custom":
+        return group.get("custom_billing_mode", "monthly")
+    return settings.get("reporting", {}).get("default_billing_mode", "monthly")
+
+
+def effective_template_key(settings, group):
+    if group.get("html_mode") == "custom":
+        key = group.get("selected_template_key") or settings.get("default_template_key", DEFAULT_TEMPLATE_KEY)
+        if key in settings["templates"]:
+            return key
+    return settings.get("default_template_key", DEFAULT_TEMPLATE_KEY)
+
+
+def grid_price_for_group(settings, group):
+    override = str(group.get("grid_price_override", "")).strip()
+    if override:
+        return parse_float(override, parse_float(settings["reporting"].get("grid_price"), 0.0))
+    return parse_float(settings["reporting"].get("grid_price"), 0.0)
+
+
+def generate_rows_and_summary(settings, group, mode=None, manual_year=None, manual_month=None):
+    sessions = fetch_sessions(settings)
+    df = pd.DataFrame(sessions)
+    if df.empty:
+        raise ValueError("Keine Sessions gefunden.")
+
+    if "created" not in df.columns or "chargedEnergy" not in df.columns:
+        raise ValueError("EVCC Sessions enthalten nicht die benötigten Felder.")
+
+    df["created"] = pd.to_datetime(df["created"], errors="coerce", utc=True).dt.tz_localize(None)
+    df = df.dropna(subset=["created"])
+
+    if manual_year and manual_month:
+        start = datetime(int(manual_year), int(manual_month), 1)
+        if int(manual_month) == 12:
+            end = datetime(int(manual_year), 12, 31)
+        else:
+            end = datetime(int(manual_year), int(manual_month) + 1, 1) - timedelta(days=1)
+        mode = "monthly"
+    else:
+        mode = mode or effective_billing_mode(settings, group)
+        start, end = period_for_mode(datetime.today(), mode)
+
+    selected = set([str(v) for v in group.get("vehicles", [])])
+    if selected and "vehicle" in df.columns:
+        df["vehicle"] = df["vehicle"].fillna("").astype(str)
+        df = df[df["vehicle"].isin(selected)]
+
+    df = df[(df["created"] >= start) & (df["created"] <= end + timedelta(days=1) - timedelta(seconds=1))]
+
+    if df.empty:
+        raise ValueError("Keine Ladevorgänge für den gewählten Zeitraum gefunden.")
+
+    df["chargedEnergy"] = pd.to_numeric(df["chargedEnergy"], errors="coerce").fillna(0)
+    price_per_kwh = grid_price_for_group(settings, group)
+    df["price"] = (df["chargedEnergy"] * price_per_kwh).round(2)
+
+    start_col = "created"
+    end_candidates = ["finished", "updated", "end"]
+    end_col = None
+    for c in end_candidates:
+        if c in df.columns:
+            end_col = c
+            break
+    if end_col:
+        df[end_col] = pd.to_datetime(df[end_col], errors="coerce", utc=True).dt.tz_localize(None)
+    else:
+        df["__end"] = df["created"]
+        end_col = "__end"
+
+    df = df.sort_values(start_col, ascending=True)
+
+    rows_html = []
+    for _, row in df.iterrows():
+        dt = row[start_col]
+        enddt = row[end_col] if pd.notna(row[end_col]) else row[start_col]
+        vehicle = str(row.get("vehicle", ""))
+        energy = float(row.get("chargedEnergy", 0))
+        price = float(row.get("price", 0))
+        rows_html.append(
+            f"<tr>"
+            f"<td>{dt.strftime('%d.%m.%Y')}</td>"
+            f"<td>{dt.strftime('%H:%M')}</td>"
+            f"<td>{enddt.strftime('%H:%M')}</td>"
+            f"<td>{vehicle}</td>"
+            f"<td>{energy:.2f}</td>"
+            f"<td>{price:.2f}</td>"
+            f"</tr>"
+        )
+
+    return {
+        "rows_html": "\n".join(rows_html),
+        "total_energy_kwh": f"{df['chargedEnergy'].sum():.2f} kWh",
+        "total_cost_eur": f"{df['price'].sum():.2f} €",
+        "period_start": start,
+        "period_end": end,
+        "billing_mode": mode,
+    }
+
+
+def render_html(settings, group, mode=None, manual_year=None, manual_month=None):
+    summary = generate_rows_and_summary(settings, group, mode=mode, manual_year=manual_year, manual_month=manual_month)
+    sender = effective_sender(settings, group)
+    recipient = {
+        "name": group.get("recipient_name", ""),
+        "company": group.get("recipient_company", ""),
+        "email": group.get("recipient_email", ""),
+        "street": group.get("recipient_street", ""),
+        "zip": group.get("recipient_zip", ""),
+        "city": group.get("recipient_city", ""),
+    }
+    bank = effective_bank(settings, group)
+    email_body = effective_email_body(settings, group)
+    template_key = effective_template_key(settings, group)
+    tpl = settings["templates"][template_key]["content"]
+
+    html = Template(tpl).render(
+        sender=sender,
+        recipient=recipient,
+        bank=bank,
+        invoice_date=datetime.today().strftime("%d.%m.%Y"),
+        billing_mode_label=billing_mode_label(summary["billing_mode"]),
+        period_label=period_label(summary["period_start"], summary["period_end"]),
+        rows_html=summary["rows_html"],
+        total_energy_kwh=summary["total_energy_kwh"],
+        total_cost_eur=summary["total_cost_eur"],
+        email_body=email_body,
+    )
+    return html, summary
+
+
+def generate_pdf(settings, group, mode=None, manual_year=None, manual_month=None):
+    ensure_dirs()
+    html, summary = render_html(settings, group, mode=mode, manual_year=manual_year, manual_month=manual_month)
+    safe_group = re.sub(r"[^A-Za-z0-9_-]+", "_", group["name"]).strip("_") or "gruppe"
+    filename = f"evcc_abrechnung_{safe_group}_{summary['period_start'].strftime('%Y%m%d')}_{summary['period_end'].strftime('%Y%m%d')}.pdf"
+    out = REPORT_DIR / filename
+    HTML(string=html).write_pdf(str(out))
+    return out, summary
+
+
+def send_email_with_attachment(settings, group, pdf_path, summary):
+    smtp_cfg = settings.get("smtp", {})
+    host = smtp_cfg.get("host", "").strip()
+    if not host:
+        raise ValueError("SMTP Host fehlt.")
+
+    port = int(smtp_cfg.get("port", 587))
+    sender = effective_sender(settings, group)
+    sender_email = sender.get("email", "").strip() or smtp_cfg.get("user", "").strip()
+    recipient_email = group.get("recipient_email", "").strip()
+    if not sender_email or not recipient_email:
+        raise ValueError("Absender- oder Empfänger-E-Mail fehlt.")
+
+    body = effective_email_body(settings, group) or "Anbei die Abrechnung als PDF."
+    subject = f"EVCC Abrechnung – {group.get('name', '')} – {period_label(summary['period_start'], summary['period_end'])}"
+
+    msg = EmailMessage()
+    msg["From"] = sender_email
+    msg["To"] = recipient_email
+    if group.get("sender_copy_enabled") and sender_email:
+        msg["Cc"] = sender_email
+    msg["Subject"] = subject
+    msg.set_content(body)
+
+    data = pdf_path.read_bytes()
+    ctype, encoding = mimetypes.guess_type(str(pdf_path))
+    maintype, subtype = ("application", "pdf") if not ctype else ctype.split("/", 1)
+    msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=pdf_path.name)
+
+    user = smtp_cfg.get("user", "").strip()
+    password = smtp_cfg.get("password", "")
+    use_tls = bool(smtp_cfg.get("tls", True))
+
+    if use_tls:
+        context = ssl.create_default_context()
+        with smtplib.SMTP(host, port) as server:
+            server.starttls(context=context)
+            if user:
+                server.login(user, password)
+            server.send_message(msg)
+    else:
+        with smtplib.SMTP(host, port) as server:
+            if user:
+                server.login(user, password)
+            server.send_message(msg)
+
+
+def scheduler_loop():
+    while True:
+        try:
+            settings = load_settings()
+            if settings.get("scheduler", {}).get("enabled"):
+                now = datetime.now()
+                hhmm = settings["scheduler"].get("time", "07:00")
+                day = int(settings["scheduler"].get("day_of_month", 1))
+                last_run = settings["scheduler"].get("last_run", "")
+                current_tag = now.strftime("%Y-%m-%d")
+                if now.day == day and now.strftime("%H:%M") >= hhmm and last_run != current_tag:
+                    for group in settings.get("groups", []):
+                        if not group.get("active"):
+                            continue
+                        group_send_day = int(group.get("send_day", day) or day)
+                        if now.day != group_send_day:
+                            continue
+                        try:
+                            pdf_path, summary = generate_pdf(settings, group)
+                            send_email_with_attachment(settings, group, pdf_path, summary)
+                        except Exception:
+                            pass
+                    settings["scheduler"]["last_run"] = current_tag
+                    save_settings(settings)
+        except Exception:
+            pass
+        time.sleep(60)
 
 
 @app.route("/")
 def dashboard():
-    start_scheduler_once()
-    return render_template("dashboard.html", title="Dashboard")
+    settings = load_settings()
+    return render_template("dashboard.html", settings=settings)
 
 
 @app.route("/settings", methods=["GET", "POST"])
@@ -738,220 +820,206 @@ def settings_page():
     if request.method == "POST":
         settings["evcc"]["url"] = request.form.get("evcc_url", "").strip()
         settings["evcc"]["password"] = request.form.get("evcc_password", "").strip()
+
         settings["sender"]["name"] = request.form.get("sender_name", "").strip()
         settings["sender"]["street"] = request.form.get("sender_street", "").strip()
         settings["sender"]["zip"] = request.form.get("sender_zip", "").strip()
         settings["sender"]["city"] = request.form.get("sender_city", "").strip()
         settings["sender"]["email"] = request.form.get("sender_email", "").strip()
+
+        settings["bank"]["recipient"] = request.form.get("bank_recipient", "").strip()
+        settings["bank"]["iban"] = request.form.get("bank_iban", "").strip()
+        settings["bank"]["bic"] = request.form.get("bank_bic", "").strip()
+        settings["bank"]["institute"] = request.form.get("bank_institute", "").strip()
+
         settings["smtp"]["host"] = request.form.get("smtp_host", "").strip()
-        try:
-            settings["smtp"]["port"] = int(request.form.get("smtp_port", "587") or 587)
-        except Exception:
-            settings["smtp"]["port"] = 587
+        settings["smtp"]["port"] = parse_int(request.form.get("smtp_port", "587"), 587)
         settings["smtp"]["user"] = request.form.get("smtp_user", "").strip()
         settings["smtp"]["password"] = request.form.get("smtp_password", "").strip()
         settings["smtp"]["tls"] = parse_bool(request.form.get("smtp_tls"))
+
         settings["scheduler"]["enabled"] = parse_bool(request.form.get("scheduler_enabled"))
-        try:
-            settings["scheduler"]["day_of_month"] = int(request.form.get("scheduler_day_of_month", "1") or 1)
-        except Exception:
-            settings["scheduler"]["day_of_month"] = 1
+        settings["scheduler"]["day_of_month"] = max(1, min(28, parse_int(request.form.get("scheduler_day_of_month", "1"), 1)))
         settings["scheduler"]["time"] = request.form.get("scheduler_time", "07:00").strip() or "07:00"
-        try:
-            settings["reporting"]["grid_price"] = float(str(request.form.get("grid_price", "0")).replace(",", "."))
-        except Exception:
-            settings["reporting"]["grid_price"] = 0.0
-        settings["reporting"]["billing_mode"] = request.form.get("billing_mode", "monthly").strip() or "monthly"
-        settings["reporting"]["default_email_body"] = request.form.get("default_email_body", "")
-        settings["reporting"]["default_template_key"] = request.form.get("default_template_key", settings["reporting"]["default_template_key"])
+
+        settings["reporting"]["grid_price"] = parse_float(request.form.get("grid_price", "0"), 0.0)
+        settings["reporting"]["default_billing_mode"] = request.form.get("default_billing_mode", "monthly").strip()
+        settings["reporting"]["default_email_body"] = request.form.get("default_email_body", "").strip()
+
         save_settings(settings)
         flash("Einstellungen gespeichert.", "success")
-        return redirect(f"{ingress_path()}/settings")
-    return render_template("settings.html", title="Einstellungen")
+        return redirect(f"{get_ingress_path()}/settings")
+    return render_template("settings.html", settings=settings)
 
 
-@app.route("/refresh_vehicles", methods=["POST"])
-def refresh_vehicles():
+@app.route("/refresh_assets", methods=["POST"])
+def refresh_assets():
     settings = load_settings()
     try:
-        assets = fetch_available_assets(settings)
-        settings["cached_assets"]["assets"] = assets
+        settings["cached_assets"] = fetch_available_assets(settings)
         save_settings(settings)
-        write_assets_cache(settings)
-        flash(f"{len(assets)} Assets geladen.", "success")
+        (REPORT_DIR / "available_assets.txt").write_text("\n".join(settings["cached_assets"]), encoding="utf-8")
+        flash(f"{len(settings['cached_assets'])} Einträge geladen.", "success")
     except Exception as err:
-        flash(f"Fahrzeuge konnten nicht geladen werden: {err}", "error")
-    return redirect(f"{ingress_path()}/groups")
+        flash(f"Einträge konnten nicht geladen werden: {err}", "error")
+    return redirect(f"{get_ingress_path()}/groups")
 
 
 @app.route("/groups", methods=["GET", "POST"])
 def groups_page():
     settings = load_settings()
+    edit_group = None
+
     if request.method == "POST":
-        form_action = request.form.get("form_action", "").strip()
-        if form_action == "delete":
+        action = request.form.get("form_action", "save")
+        if action == "delete":
             group_id = request.form.get("group_id", "").strip()
             settings["groups"] = [g for g in settings["groups"] if g.get("id") != group_id]
             save_settings(settings)
             flash("Gruppe gelöscht.", "success")
-            return redirect(f"{ingress_path()}/groups")
-        if form_action == "toggle_active":
-            group_id = request.form.get("group_id", "").strip()
-            grp = next((g for g in settings["groups"] if g.get("id") == group_id), None)
-            if grp:
-                grp["active"] = parse_bool(request.form.get("active"))
-                save_settings(settings)
-                flash("Status gespeichert.", "success")
-            return redirect(f"{ingress_path()}/groups")
+            return redirect(f"{get_ingress_path()}/groups")
 
         group_id = request.form.get("group_id", "").strip() or str(uuid.uuid4())
-        group_data = normalize_group({
-            "id": group_id,
-            "name": request.form.get("name", "").strip(),
-            "recipient_name": request.form.get("recipient_name", "").strip(),
-            "recipient_company": request.form.get("recipient_company", "").strip(),
-            "recipient_email": request.form.get("recipient_email", "").strip(),
-            "recipient_street": request.form.get("recipient_street", "").strip(),
-            "recipient_zip": request.form.get("recipient_zip", "").strip(),
-            "recipient_city": request.form.get("recipient_city", "").strip(),
-            "assets": request.form.getlist("assets"),
-            "grid_price_override": request.form.get("grid_price_override", "").strip(),
-            "active": parse_bool(request.form.get("active")),
-            "sender_mode": request.form.get("sender_mode", "default").strip(),
-            "custom_sender": {
-                "name": request.form.get("custom_sender_name", "").strip(),
-                "street": request.form.get("custom_sender_street", "").strip(),
-                "zip": request.form.get("custom_sender_zip", "").strip(),
-                "city": request.form.get("custom_sender_city", "").strip(),
-                "email": request.form.get("custom_sender_email", "").strip(),
-            },
-            "bank_mode": request.form.get("bank_mode", "default").strip(),
-            "custom_bank": {
-                "recipient": request.form.get("custom_bank_recipient", "").strip(),
-                "iban": request.form.get("custom_bank_iban", "").strip(),
-                "bic": request.form.get("custom_bank_bic", "").strip(),
-                "institute": request.form.get("custom_bank_institute", "").strip(),
-            },
-            "template_choice": request.form.get("template_choice", "default").strip() or "default",
-            "email_body_mode": request.form.get("email_body_mode", "default").strip(),
-            "custom_email_body": request.form.get("custom_email_body", ""),
-            "billing_mode_source": request.form.get("billing_mode_source", "default").strip(),
-            "custom_billing_mode": request.form.get("custom_billing_mode", "monthly").strip(),
-            "custom_send_day": request.form.get("custom_send_day", "1").strip(),
-        })
-        existing = next((g for g in settings["groups"] if g.get("id") == group_id), None)
+        group = find_group(settings, group_id) or {"id": group_id}
+        group["id"] = group_id
+        group["active"] = parse_bool(request.form.get("active"))
+        group["name"] = request.form.get("name", "").strip()
+        group["recipient_name"] = request.form.get("recipient_name", "").strip()
+        group["recipient_company"] = request.form.get("recipient_company", "").strip()
+        group["recipient_email"] = request.form.get("recipient_email", "").strip()
+        group["recipient_street"] = request.form.get("recipient_street", "").strip()
+        group["recipient_zip"] = request.form.get("recipient_zip", "").strip()
+        group["recipient_city"] = request.form.get("recipient_city", "").strip()
+        group["vehicles"] = [v for v in request.form.getlist("vehicles") if v.strip()]
+        group["grid_price_override"] = request.form.get("grid_price_override", "").strip()
+        group["sender_mode"] = request.form.get("sender_mode", "default").strip()
+        group["custom_sender"] = {
+            "name": request.form.get("custom_sender_name", "").strip(),
+            "email": request.form.get("custom_sender_email", "").strip(),
+            "street": request.form.get("custom_sender_street", "").strip(),
+            "zip": request.form.get("custom_sender_zip", "").strip(),
+            "city": request.form.get("custom_sender_city", "").strip(),
+        }
+        group["html_mode"] = request.form.get("html_mode", "default").strip()
+        group["selected_template_key"] = request.form.get("selected_template_key", DEFAULT_TEMPLATE_KEY).strip()
+        group["email_body_mode"] = request.form.get("email_body_mode", "default").strip()
+        group["custom_email_body"] = request.form.get("custom_email_body", "").strip()
+        group["billing_mode_mode"] = request.form.get("billing_mode_mode", "default").strip()
+        group["custom_billing_mode"] = request.form.get("custom_billing_mode", "monthly").strip()
+        group["send_day"] = max(1, min(28, parse_int(request.form.get("send_day", "1"), 1)))
+        group["sender_copy_enabled"] = parse_bool(request.form.get("sender_copy_enabled"))
+        group["bank_mode"] = request.form.get("bank_mode", "default").strip()
+        group["custom_bank"] = {
+            "recipient": request.form.get("custom_bank_recipient", "").strip(),
+            "iban": request.form.get("custom_bank_iban", "").strip(),
+            "bic": request.form.get("custom_bank_bic", "").strip(),
+            "institute": request.form.get("custom_bank_institute", "").strip(),
+        }
+
+        existing = find_group(settings, group_id)
         if existing:
-            existing.update(group_data)
+            existing.update(normalize_group(group))
             flash("Gruppe aktualisiert.", "success")
         else:
-            settings["groups"].append(group_data)
+            settings["groups"].append(normalize_group(group))
             flash("Gruppe angelegt.", "success")
         save_settings(settings)
-        return redirect(f"{ingress_path()}/groups")
+        return redirect(f"{get_ingress_path()}/groups")
 
-    edit_group_id = request.args.get("edit", "").strip()
-    edit_group = next((g for g in settings["groups"] if g.get("id") == edit_group_id), None)
-    return render_template("groups.html", title="Gruppen", edit_group=edit_group)
+    edit_id = request.args.get("edit", "").strip()
+    if edit_id:
+        edit_group = find_group(settings, edit_id)
+    return render_template("groups.html", settings=settings, edit_group=edit_group)
 
 
 @app.route("/templates", methods=["GET", "POST"])
 def templates_page():
     settings = load_settings()
+    edit_key = request.args.get("edit", "").strip()
+    edit_template = settings["templates"].get(edit_key)
+
     if request.method == "POST":
-        action = request.form.get("action", "").strip()
+        action = request.form.get("form_action", "save").strip()
+        key = request.form.get("key", "").strip()
+        if action == "set_default":
+            key = request.form.get("key", "").strip()
+            if key in settings["templates"]:
+                settings["default_template_key"] = key
+                save_settings(settings)
+                flash("Default-Template gesetzt.", "success")
+            return redirect(f"{get_ingress_path()}/templates")
+
         if action == "delete":
-            key = request.form.get("template_key", "").strip()
-            if settings["reporting"]["default_template_key"] == key:
-                flash("Das aktuell gesetzte Default-Template kann nicht gelöscht werden.", "error")
+            key = request.form.get("key", "").strip()
+            if key == settings.get("default_template_key"):
+                flash("Das aktuelle Default-Template kann nicht gelöscht werden.", "error")
             elif key in settings["templates"]:
                 del settings["templates"][key]
                 save_settings(settings)
                 flash("Template gelöscht.", "success")
-            return redirect(f"{ingress_path()}/templates")
-        if action == "set_default":
-            key = request.form.get("template_key", "").strip()
-            if key in settings["templates"]:
-                settings["reporting"]["default_template_key"] = key
-                save_settings(settings)
-                flash("Default-Template gesetzt.", "success")
-            return redirect(f"{ingress_path()}/templates")
-        if action in {"create", "update"}:
-            original_key = request.form.get("original_template_key", "").strip()
-            key = request.form.get("template_key", "").strip()
-            label = request.form.get("template_label", "").strip()
-            content = request.form.get("template_content", "")
-            uploaded = request.files.get("template_file")
-            if uploaded and uploaded.filename:
-                content = uploaded.read().decode("utf-8", errors="replace")
-                if not key:
-                    key = Path(uploaded.filename).stem.lower().replace(" ", "_")
-                if not label:
-                    label = uploaded.filename
-            if not key:
-                flash("Template-Key fehlt.", "error")
-                return redirect(f"{ingress_path()}/templates")
-            if action == "update" and original_key and original_key != key and original_key in settings["templates"]:
-                old = settings["templates"].pop(original_key)
-                if settings["reporting"]["default_template_key"] == original_key:
-                    settings["reporting"]["default_template_key"] = key
-                if not content:
-                    content = old.get("content", "")
-                if not label:
-                    label = old.get("label", key)
-            old_existing = settings["templates"].get(key, {})
-            settings["templates"][key] = {
-                "label": label or old_existing.get("label", key),
-                "content": content if content else old_existing.get("content", ""),
-            }
-            save_settings(settings)
-            flash("Template gespeichert.", "success")
-            return redirect(f"{ingress_path()}/templates")
-    edit_key = request.args.get("edit", "").strip()
-    edit_template = settings["templates"].get(edit_key) if edit_key else None
-    return render_template("templates.html", title="HTML Templates", edit_key=edit_key, edit_template=edit_template)
+            return redirect(f"{get_ingress_path()}/templates")
+
+        label = request.form.get("label", "").strip()
+        content = request.form.get("content", "").strip()
+        upload = request.files.get("template_file")
+        if upload and upload.filename:
+            raw = upload.read()
+            content = raw.decode("utf-8", errors="ignore")
+
+        if not key:
+            flash("Template Key fehlt.", "error")
+            return redirect(f"{get_ingress_path()}/templates")
+        if not label:
+            flash("Bezeichnung fehlt.", "error")
+            return redirect(f"{get_ingress_path()}/templates")
+        if not content:
+            flash("Template-Inhalt fehlt.", "error")
+            return redirect(f"{get_ingress_path()}/templates")
+
+        settings["templates"][key] = {"key": key, "label": label, "content": content}
+        save_settings(settings)
+        flash("Template gespeichert.", "success")
+        return redirect(f"{get_ingress_path()}/templates")
+
+    return render_template("templates_page.html", settings=settings, edit_template=edit_template)
 
 
 @app.route("/report", methods=["GET", "POST"])
 def report_page():
     settings = load_settings()
     generated_file = None
-    generated_pdf = None
+    preview_html = None
     if request.method == "POST":
-        group = next((g for g in settings["groups"] if g.get("id") == request.form.get("group_id", "").strip()), None)
+        group_id = request.form.get("group_id", "").strip()
+        action = request.form.get("action", "pdf")
+        mode = request.form.get("mode", "auto").strip()
+        manual_year = request.form.get("year", "").strip() or None
+        manual_month = request.form.get("month", "").strip() or None
+        group = find_group(settings, group_id)
         if not group:
             flash("Gruppe nicht gefunden.", "error")
-            return redirect(f"{ingress_path()}/report")
-        billing_mode = get_group_billing_mode(settings, group)
-        mode = request.form.get("mode", "previous_period")
-        if mode == "manual":
-            year = int(request.form.get("year") or datetime.now().year)
-            month = int(request.form.get("month") or datetime.now().month)
-            start, end, stamp = manual_period(billing_mode, year, month)
-        else:
-            start, end, stamp = last_completed_period(billing_mode)
+            return redirect(f"{get_ingress_path()}/report")
+
         try:
-            txt_file, pdf_file, summary = create_report_files(settings, group, start, end, stamp)
-            generated_file = txt_file
-            generated_pdf = pdf_file
-            if request.form.get("action") == "send":
-                send_report_email(settings, group, pdf_file, summary)
-                flash(f"PDF erzeugt und E-Mail versendet: {pdf_file.name}", "success")
+            if action == "preview":
+                preview_html, _ = render_html(settings, group, manual_year=manual_year if mode == "manual" else None, manual_month=manual_month if mode == "manual" else None)
             else:
-                flash(f"PDF erzeugt: {pdf_file.name}", "success")
+                pdf_path, summary = generate_pdf(settings, group, manual_year=manual_year if mode == "manual" else None, manual_month=manual_month if mode == "manual" else None)
+                generated_file = pdf_path
+                flash(f"PDF erzeugt: {pdf_path.name}", "success")
+                if action == "send":
+                    send_email_with_attachment(settings, group, pdf_path, summary)
+                    flash("E-Mail versendet.", "success")
         except Exception as err:
-            flash(f"Bericht konnte nicht erzeugt werden: {err}", "error")
+            flash(f"Bericht konnte nicht verarbeitet werden: {err}", "error")
+
     current_year = datetime.today().year
     years = list(range(current_year - 3, current_year + 2))
     months = list(range(1, 13))
-    return render_template("report.html", title="Testbericht", years=years, months=months, generated_file=generated_file, generated_pdf=generated_pdf)
-
-
-@app.route("/health")
-def health():
-    return {"status": "ok"}, 200
+    return render_template("report.html", settings=settings, years=years, months=months, generated_file=generated_file, preview_html=preview_html)
 
 
 if __name__ == "__main__":
     ensure_dirs()
-    start_scheduler_once()
+    threading.Thread(target=scheduler_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=APP_PORT)

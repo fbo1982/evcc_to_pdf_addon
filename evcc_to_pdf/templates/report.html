@@ -7,29 +7,44 @@
   {% else %}
     <form method="post" action="{{ ingress_path }}/report" class="stack">
       <label><span>Gruppe</span>
-        <select name="group_id" required>
-          {% for group in settings.groups %}
-          <option value="{{ group.id }}">{{ group.name }}</option>
+        <select name="group_id">
+          {% for g in settings.groups %}
+          <option value="{{ g.id }}">{{ g.name }}</option>
           {% endfor %}
         </select>
       </label>
-      <fieldset>
-        <legend>Zeitraum</legend>
-        <label class="checkbox"><input type="radio" name="mode" value="previous_period" checked><span>Letzter vollständiger Zeitraum</span></label>
-        <label class="checkbox"><input type="radio" name="mode" value="manual"><span>Manuell</span></label>
-        <div class="form-grid">
-          <label><span>Jahr</span><select name="year">{% for year in years %}<option value="{{ year }}">{{ year }}</option>{% endfor %}</select></label>
-          <label><span>Monat</span><select name="month">{% for month in months %}<option value="{{ month }}">{{ "%02d"|format(month) }}</option>{% endfor %}</select></label>
-        </div>
-      </fieldset>
+
+      <label><span>Zeitraum</span>
+        <select name="mode">
+          <option value="auto">Automatisch nach Modus</option>
+          <option value="manual">Manuell Monat</option>
+        </select>
+      </label>
+      <div class="form-grid">
+        <label><span>Jahr</span>
+          <select name="year">{% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}</select>
+        </label>
+        <label><span>Monat</span>
+          <select name="month">{% for m in months %}<option value="{{ m }}">{{ "%02d"|format(m) }}</option>{% endfor %}</select>
+        </label>
+      </div>
+
       <div class="actions">
-        <button type="submit" name="action" value="generate">PDF erzeugen</button>
-        <button type="submit" name="action" value="send">PDF erzeugen und versenden</button>
+        <button type="submit" name="action" value="preview">Vorschau</button>
+        <button type="submit" name="action" value="pdf">PDF erzeugen</button>
+        <button type="submit" name="action" value="send">PDF erzeugen und senden</button>
       </div>
     </form>
   {% endif %}
-  {% if generated_pdf %}
-    <p class="muted">Zuletzt erzeugtes PDF: <code>{{ generated_pdf }}</code></p>
+  {% if generated_file %}
+    <p class="muted">Erstellt: {{ generated_file }}</p>
   {% endif %}
 </section>
+
+{% if preview_html %}
+<section class="card">
+  <h2>HTML Vorschau</h2>
+  <iframe style="width:100%; height:1000px; background:#fff; border:1px solid #ccc;" srcdoc='{{ preview_html|e }}'></iframe>
+</section>
+{% endif %}
 {% endblock %}
