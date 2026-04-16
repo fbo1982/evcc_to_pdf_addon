@@ -96,16 +96,6 @@
 
       <div class="subblock">
         <h3>E-Mail</h3>
-        <label><span>E-Mail Inhalt</span>
-          <select name="email_body_mode" id="email_body_mode" onchange="toggleSection('email_body_mode','custom','email_block')">
-            <option value="default" {% if not edit_group or edit_group.email_body_mode == 'default' %}selected{% endif %}>Standard</option>
-            <option value="custom" {% if edit_group and edit_group.email_body_mode == 'custom' %}selected{% endif %}>Gruppenbezogen</option>
-          </select>
-        </label>
-        <div id="email_block" class="subblock" style="{% if not edit_group or edit_group.email_body_mode != 'custom' %}display:none{% endif %}">
-          <label><span>Gruppenbezogener E-Mail-Inhalt</span><textarea name="custom_email_body" rows="6">{{ edit_group.custom_email_body if edit_group else '' }}</textarea></label>
-        </div>
-
         <label><span>E-Mail Betreff</span>
           <select name="email_subject_mode" id="email_subject_mode" onchange="toggleSection('email_subject_mode','custom','email_subject_block')">
             <option value="default" {% if not edit_group or edit_group.email_subject_mode == 'default' %}selected{% endif %}>Standard</option>
@@ -115,16 +105,26 @@
         <div id="email_subject_block" class="subblock" style="{% if not edit_group or edit_group.email_subject_mode != 'custom' %}display:none{% endif %}">
           <label><span>Gruppenbezogener E-Mail-Betreff</span><input type="text" name="custom_email_subject" value="{{ edit_group.custom_email_subject if edit_group else '' }}"></label>
         </div>
+
+        <label><span>E-Mail Inhalt</span>
+          <select name="email_body_mode" id="email_body_mode" onchange="toggleSection('email_body_mode','custom','email_block')">
+            <option value="default" {% if not edit_group or edit_group.email_body_mode == 'default' %}selected{% endif %}>Standard</option>
+            <option value="custom" {% if edit_group and edit_group.email_body_mode == 'custom' %}selected{% endif %}>Gruppenbezogen</option>
+          </select>
+        </label>
+        <div id="email_block" class="subblock" style="{% if not edit_group or edit_group.email_body_mode != 'custom' %}display:none{% endif %}">
+          <label><span>Gruppenbezogener E-Mail-Inhalt</span><textarea name="custom_email_body" rows="6">{{ edit_group.custom_email_body if edit_group else '' }}</textarea></label>
+        </div>
         <details class="info-box">
           <summary>Platzhalter für E-Mail-Betreff und E-Mail-Inhalt</summary>
           <div class="info-box-body">
             <div class="info-grid">
-              <div><code>{{period_label}}</code><p>Formatierter Abrechnungszeitraum, z. B. 03.2026 oder Q1 2026.</p></div>
-              <div><code>{{period_start}}</code><p>Startdatum des Abrechnungszeitraums.</p></div>
-              <div><code>{{period_end}}</code><p>Enddatum des Abrechnungszeitraums.</p></div>
-              <div><code>{{period_month}}</code><p>Monat des ausgewählten Zeitraums, z. B. 03.</p></div>
-              <div><code>{{period_year}}</code><p>Jahr des ausgewählten Zeitraums, z. B. 2026.</p></div>
-              <div><code>{{billing_mode_label}}</code><p>Bezeichnung des Abrechnungsmodus, z. B. Monatlich oder Quartal.</p></div>
+              <div><code>{% raw %}{{period_label}}{% endraw %}</code><p>Formatierter Abrechnungszeitraum, z. B. 03.2026 oder Q1 2026.</p></div>
+              <div><code>{% raw %}{{period_start}}{% endraw %}</code><p>Startdatum des Abrechnungszeitraums.</p></div>
+              <div><code>{% raw %}{{period_end}}{% endraw %}</code><p>Enddatum des Abrechnungszeitraums.</p></div>
+              <div><code>{% raw %}{{period_month}}{% endraw %}</code><p>Monat des ausgewählten Zeitraums, z. B. 03.</p></div>
+              <div><code>{% raw %}{{period_year}}{% endraw %}</code><p>Jahr des ausgewählten Zeitraums, z. B. 2026.</p></div>
+              <div><code>{% raw %}{{billing_mode_label}}{% endraw %}</code><p>Bezeichnung des Abrechnungsmodus, z. B. Monatlich oder Quartal.</p></div>
             </div>
           </div>
         </details>

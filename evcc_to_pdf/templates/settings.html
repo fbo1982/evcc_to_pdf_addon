@@ -54,19 +54,19 @@
         </select>
       </label>
     </div>
-    <label><span>Standard E-Mail-Betreff</span><input type="text" name="default_email_subject" value="{{ settings.reporting.default_email_subject }}"></label>
     <label><span>Standard E-Mail-Inhalt</span><textarea name="default_email_body" rows="6">{{ settings.reporting.default_email_body }}</textarea></label>
-    
+    <label><span>Standard E-Mail-Betreff</span><input type="text" name="default_email_subject" value="{{ settings.reporting.default_email_subject }}"></label>
+
       <details class="info-box">
         <summary>Platzhalter für E-Mail-Betreff und E-Mail-Inhalt</summary>
         <div class="info-box-body">
           <div class="info-grid">
-            <div><code>{{period_label}}</code><p>Formatierter Abrechnungszeitraum, z. B. 03.2026 oder Q1 2026.</p></div>
-            <div><code>{{period_start}}</code><p>Startdatum des Abrechnungszeitraums.</p></div>
-            <div><code>{{period_end}}</code><p>Enddatum des Abrechnungszeitraums.</p></div>
-            <div><code>{{period_month}}</code><p>Monat des ausgewählten Zeitraums, z. B. 03.</p></div>
-            <div><code>{{period_year}}</code><p>Jahr des ausgewählten Zeitraums, z. B. 2026.</p></div>
-            <div><code>{{billing_mode_label}}</code><p>Bezeichnung des Abrechnungsmodus, z. B. Monatlich oder Quartal.</p></div>
+            <div><code>{% raw %}{{period_label}}{% endraw %}</code><p>Formatierter Abrechnungszeitraum, z. B. 03.2026 oder Q1 2026.</p></div>
+            <div><code>{% raw %}{{period_start}}{% endraw %}</code><p>Startdatum des Abrechnungszeitraums.</p></div>
+            <div><code>{% raw %}{{period_end}}{% endraw %}</code><p>Enddatum des Abrechnungszeitraums.</p></div>
+            <div><code>{% raw %}{{period_month}}{% endraw %}</code><p>Monat des ausgewählten Zeitraums, z. B. 03.</p></div>
+            <div><code>{% raw %}{{period_year}}{% endraw %}</code><p>Jahr des ausgewählten Zeitraums, z. B. 2026.</p></div>
+            <div><code>{% raw %}{{billing_mode_label}}{% endraw %}</code><p>Bezeichnung des Abrechnungsmodus, z. B. Monatlich oder Quartal.</p></div>
           </div>
         </div>
       </details>
