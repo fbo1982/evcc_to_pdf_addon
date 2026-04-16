@@ -8,15 +8,15 @@
         <button type="submit">Fahrzeuge aktualisieren</button>
       </form>
     </div>
-
-    {% if settings.groups %}
+    {% if ui.groups %}
       <div class="group-list">
-        {% for group in settings.groups %}
+        {% for group in ui.groups %}
           <div class="group-item">
             <div>
               <strong>{{ group.name }}</strong><br>
               <span class="muted">{{ group.recipient_company }} · {{ group.recipient_email }}</span><br>
-              <span class="muted">{{ group.vehicles|join(", ") }}</span>
+              <span class="muted">{{ group.vehicles|join(", ") }}</span><br>
+              <span class="muted">Absender: {{ "gruppenbezogen" if group.sender_mode == "custom" else "standard" }}</span>
             </div>
             <div class="group-actions">
               <a class="button secondary" href="{{ ingress_path }}/groups?edit={{ group.id }}">Bearbeiten</a>
@@ -38,28 +38,59 @@
     <h2>{{ "Gruppe bearbeiten" if edit_group else "Neue Gruppe" }}</h2>
     <form method="post" action="{{ ingress_path }}/groups" class="stack">
       <input type="hidden" name="group_id" value="{{ edit_group.id if edit_group else '' }}">
-
       <label><span>Gruppenname</span><input type="text" name="name" value="{{ edit_group.name if edit_group else '' }}" required></label>
       <label><span>Empfängername</span><input type="text" name="recipient_name" value="{{ edit_group.recipient_name if edit_group else '' }}"></label>
       <label><span>Firma</span><input type="text" name="recipient_company" value="{{ edit_group.recipient_company if edit_group else '' }}"></label>
       <label><span>E-Mail</span><input type="email" name="recipient_email" value="{{ edit_group.recipient_email if edit_group else '' }}"></label>
       <label><span>Straße</span><input type="text" name="recipient_street" value="{{ edit_group.recipient_street if edit_group else '' }}"></label>
-
       <div class="form-grid">
         <label><span>PLZ</span><input type="text" name="recipient_zip" value="{{ edit_group.recipient_zip if edit_group else '' }}"></label>
         <label><span>Ort</span><input type="text" name="recipient_city" value="{{ edit_group.recipient_city if edit_group else '' }}"></label>
       </div>
-
       <label><span>Optionaler Preis-Override €/kWh</span><input type="text" name="grid_price_override" value="{{ edit_group.grid_price_override if edit_group else '' }}"></label>
+
+      <label><span>Absender</span>
+        <select name="sender_mode" id="sender_mode">
+          <option value="default" {% if not edit_group or edit_group.sender_mode == 'default' %}selected{% endif %}>Standard-Absender</option>
+          <option value="custom" {% if edit_group and edit_group.sender_mode == 'custom' %}selected{% endif %}>Gruppenbezogener Absender</option>
+        </select>
+      </label>
+
+      <div id="custom_sender_fields" class="stack">
+        <div class="form-grid">
+          <label><span>Name</span><input type="text" name="custom_sender_name" value="{{ edit_group.custom_sender.name if edit_group else '' }}"></label>
+          <label><span>E-Mail</span><input type="email" name="custom_sender_email" value="{{ edit_group.custom_sender.email if edit_group else '' }}"></label>
+          <label><span>Straße</span><input type="text" name="custom_sender_street" value="{{ edit_group.custom_sender.street if edit_group else '' }}"></label>
+          <label><span>PLZ</span><input type="text" name="custom_sender_zip" value="{{ edit_group.custom_sender.zip if edit_group else '' }}"></label>
+          <label><span>Ort</span><input type="text" name="custom_sender_city" value="{{ edit_group.custom_sender.city if edit_group else '' }}"></label>
+        </div>
+
+        <label><span>HTML</span>
+          <select name="html_mode" id="html_mode">
+            <option value="default" {% if not edit_group or edit_group.html_mode == 'default' %}selected{% endif %}>Standard HTML</option>
+            <option value="custom" {% if edit_group and edit_group.html_mode == 'custom' %}selected{% endif %}>Eigenes HTML</option>
+          </select>
+        </label>
+
+        <div id="custom_html_fields" class="stack">
+          <label><span>HTML-Template</span>
+            <select name="template_id">
+              {% for tpl in ui.templates.values() %}
+                <option value="{{ tpl.id }}" {% if edit_group and edit_group.template_id == tpl.id %}selected{% endif %}>{{ tpl.label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+      </div>
 
       <fieldset>
         <legend>🚗 Fahrzeuge</legend>
-        {% if vehicle_entries %}
+        {% if vehicles %}
           <div class="checkbox-grid">
-            {% for entry in vehicle_entries %}
+            {% for vehicle in vehicles %}
               <label class="checkbox">
-                <input type="checkbox" name="vehicles" value="{{ entry.name }}" {% if edit_group and entry.name in edit_group.vehicles %}checked{% endif %}>
-                <span>{{ entry.name }}</span>
+                <input type="checkbox" name="vehicles" value="{{ vehicle.name }}" {% if edit_group and vehicle.name in edit_group.vehicles %}checked{% endif %}>
+                <span>{{ vehicle.name }}</span>
               </label>
             {% endfor %}
           </div>
@@ -70,12 +101,12 @@
 
       <fieldset>
         <legend>💳 Ladekarten</legend>
-        {% if card_entries %}
+        {% if cards %}
           <div class="checkbox-grid">
-            {% for entry in card_entries %}
+            {% for card in cards %}
               <label class="checkbox">
-                <input type="checkbox" name="vehicles" value="{{ entry.name }}" {% if edit_group and entry.name in edit_group.vehicles %}checked{% endif %}>
-                <span>{{ entry.name }}</span>
+                <input type="checkbox" name="vehicles" value="{{ card.name }}" {% if edit_group and card.name in edit_group.vehicles %}checked{% endif %}>
+                <span>{{ card.name }}</span>
               </label>
             {% endfor %}
           </div>
@@ -84,7 +115,9 @@
         {% endif %}
       </fieldset>
 
-      <div class="actions"><button type="submit">{{ "Aktualisieren" if edit_group else "Anlegen" }}</button></div>
+      <div class="actions">
+        <button type="submit">{{ "Aktualisieren" if edit_group else "Anlegen" }}</button>
+      </div>
     </form>
   </section>
 </div>

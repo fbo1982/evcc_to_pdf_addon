@@ -2,14 +2,13 @@
 {% block content %}
 <section class="card">
   <h2>Testbericht erzeugen</h2>
-  {% if not settings.groups %}
+  {% if not ui.groups %}
     <p>Bitte zuerst mindestens eine Gruppe anlegen.</p>
   {% else %}
     <form method="post" action="{{ ingress_path }}/report" class="stack">
-      <label>
-        <span>Gruppe</span>
+      <label><span>Gruppe</span>
         <select name="group_id" required>
-          {% for group in settings.groups %}
+          {% for group in ui.groups %}
             <option value="{{ group.id }}">{{ group.name }}</option>
           {% endfor %}
         </select>
@@ -19,10 +18,13 @@
         <legend>Zeitraum</legend>
         <label class="checkbox"><input type="radio" name="mode" value="previous_month" checked><span>Vormonat</span></label>
         <label class="checkbox"><input type="radio" name="mode" value="manual"><span>Manuell</span></label>
-
         <div class="form-grid">
-          <label><span>Jahr</span><select name="year">{% for year in years %}<option value="{{ year }}">{{ year }}</option>{% endfor %}</select></label>
-          <label><span>Monat</span><select name="month">{% for month in months %}<option value="{{ month }}">{{ "%02d"|format(month) }}</option>{% endfor %}</select></label>
+          <label><span>Jahr</span>
+            <select name="year">{% for year in years %}<option value="{{ year }}">{{ year }}</option>{% endfor %}</select>
+          </label>
+          <label><span>Monat</span>
+            <select name="month">{% for month in months %}<option value="{{ month }}">{{ "%02d"|format(month) }}</option>{% endfor %}</select>
+          </label>
         </div>
       </fieldset>
 

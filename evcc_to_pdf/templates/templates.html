@@ -1,0 +1,40 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="grid two-col">
+  <section class="card">
+    <h2>HTML-Templates</h2>
+    <div class="group-list">
+      {% for tpl in ui.templates.values() %}
+        <div class="group-item">
+          <div>
+            <strong>{{ tpl.label }}</strong><br>
+            <span class="muted">{{ tpl.id }}</span>
+          </div>
+          <div class="group-actions">
+            <a class="button secondary" href="{{ ingress_path }}/templates?edit={{ tpl.id }}">Bearbeiten</a>
+            {% if tpl.id != 'default' %}
+            <form method="post" action="{{ ingress_path }}/templates" onsubmit="return confirm('Template wirklich löschen?')">
+              <input type="hidden" name="form_action" value="delete">
+              <input type="hidden" name="template_id" value="{{ tpl.id }}">
+              <button type="submit" class="danger">Löschen</button>
+            </form>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>{{ "Template bearbeiten" if edit_template else "Neues Template" }}</h2>
+    <form method="post" action="{{ ingress_path }}/templates" class="stack">
+      <input type="hidden" name="template_id" value="{{ edit_template.id if edit_template else '' }}">
+      <label><span>Bezeichnung</span><input type="text" name="template_label" value="{{ edit_template.label if edit_template else '' }}" required></label>
+      <label><span>HTML-Inhalt</span><textarea name="template_content" rows="16">{{ edit_template.content if edit_template else '' }}</textarea></label>
+      <div class="actions">
+        <button type="submit">Speichern</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

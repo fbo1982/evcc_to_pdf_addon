@@ -2,46 +2,64 @@
 {% block content %}
 <form method="post" action="{{ ingress_path }}/settings" class="stack">
   <section class="card">
+    <h2>MQTT (statisch aus Add-on-Konfiguration)</h2>
+    <div class="form-grid">
+      <label><span>Host</span><input type="text" value="{{ addon_opts.mqtt_host }}" readonly></label>
+      <label><span>Port</span><input type="text" value="{{ addon_opts.mqtt_port }}" readonly></label>
+      <label><span>User</span><input type="text" value="{{ addon_opts.mqtt_user }}" readonly></label>
+      <label><span>Basispfad</span><input type="text" value="{{ addon_opts.mqtt_base_topic }}" readonly></label>
+    </div>
+    <p class="muted">Diese Felder kommen aus dem Add-on-Konfigurationsbereich und werden bei Updates nicht überschrieben.</p>
+  </section>
+
+  <section class="card">
     <h2>EVCC</h2>
     <div class="form-grid">
-      <label><span>EVCC URL</span><input type="text" name="evcc_url" value="{{ settings.evcc.url }}"></label>
-      <label><span>EVCC Passwort</span><input type="password" name="evcc_password" value="{{ settings.evcc.password }}"></label>
+      <label><span>EVCC URL</span><input type="text" name="evcc_url" value="{{ ui.evcc.url }}"></label>
+      <label><span>EVCC Passwort</span><input type="password" name="evcc_password" value="{{ secrets.evcc_password }}"></label>
     </div>
   </section>
 
   <section class="card">
-    <h2>Absender</h2>
+    <h2>Standard-Absender</h2>
     <div class="form-grid">
-      <label><span>Name</span><input type="text" name="sender_name" value="{{ settings.sender.name }}"></label>
-      <label><span>E-Mail</span><input type="email" name="sender_email" value="{{ settings.sender.email }}"></label>
-      <label><span>Straße</span><input type="text" name="sender_street" value="{{ settings.sender.street }}"></label>
-      <label><span>PLZ</span><input type="text" name="sender_zip" value="{{ settings.sender.zip }}"></label>
-      <label><span>Ort</span><input type="text" name="sender_city" value="{{ settings.sender.city }}"></label>
-      <label><span>Netzstrompreis €/kWh</span><input type="text" name="grid_price" value="{{ settings.reporting.grid_price }}"></label>
+      <label><span>Name</span><input type="text" name="sender_name" value="{{ ui.sender.name }}"></label>
+      <label><span>E-Mail</span><input type="email" name="sender_email" value="{{ ui.sender.email }}"></label>
+      <label><span>Straße</span><input type="text" name="sender_street" value="{{ ui.sender.street }}"></label>
+      <label><span>PLZ</span><input type="text" name="sender_zip" value="{{ ui.sender.zip }}"></label>
+      <label><span>Ort</span><input type="text" name="sender_city" value="{{ ui.sender.city }}"></label>
+      <label><span>Netzstrompreis €/kWh</span><input type="text" name="grid_price" value="{{ ui.reporting.grid_price }}"></label>
     </div>
   </section>
 
   <section class="card">
     <h2>SMTP</h2>
     <div class="form-grid">
-      <label><span>Host</span><input type="text" name="smtp_host" value="{{ settings.smtp.host }}"></label>
-      <label><span>Port</span><input type="number" name="smtp_port" value="{{ settings.smtp.port }}"></label>
-      <label><span>Benutzer</span><input type="text" name="smtp_user" value="{{ settings.smtp.user }}"></label>
-      <label><span>Passwort</span><input type="password" name="smtp_password" value="{{ settings.smtp.password }}"></label>
-      <label class="checkbox"><input type="checkbox" name="smtp_tls" {% if settings.smtp.tls %}checked{% endif %}><span>TLS verwenden</span></label>
+      <label><span>Host</span><input type="text" name="smtp_host" value="{{ ui.smtp.host }}"></label>
+      <label><span>Port</span><input type="number" name="smtp_port" value="{{ ui.smtp.port }}"></label>
+      <label><span>User</span><input type="text" name="smtp_user" value="{{ ui.smtp.user }}"></label>
+      <label><span>Passwort</span><input type="password" name="smtp_password" value="{{ secrets.smtp_password }}"></label>
+      <label class="checkbox">
+        <input type="checkbox" name="smtp_tls" {% if ui.smtp.tls %}checked{% endif %}>
+        <span>TLS verwenden</span>
+      </label>
     </div>
   </section>
 
   <section class="card">
-    <h2>Scheduler-Konfiguration</h2>
+    <h2>Scheduler</h2>
     <div class="form-grid">
-      <label class="checkbox"><input type="checkbox" name="scheduler_enabled" {% if settings.scheduler.enabled %}checked{% endif %}><span>Scheduler aktivieren</span></label>
-      <label><span>Tag im Monat</span><input type="number" min="1" max="28" name="scheduler_day_of_month" value="{{ settings.scheduler.day_of_month }}"></label>
-      <label><span>Uhrzeit</span><input type="time" name="scheduler_time" value="{{ settings.scheduler.time }}"></label>
+      <label class="checkbox">
+        <input type="checkbox" name="scheduler_enabled" {% if ui.scheduler.enabled %}checked{% endif %}>
+        <span>aktiv</span>
+      </label>
+      <label><span>Tag im Monat</span><input type="number" min="1" max="28" name="scheduler_day_of_month" value="{{ ui.scheduler.day_of_month }}"></label>
+      <label><span>Uhrzeit</span><input type="time" name="scheduler_time" value="{{ ui.scheduler.time }}"></label>
     </div>
-    <p class="muted">Schritt 1 speichert die Scheduler-Einstellungen nur. Die automatische Ausführung kommt später.</p>
   </section>
 
-  <div class="actions"><button type="submit">Speichern</button></div>
+  <div class="actions">
+    <button type="submit">Speichern</button>
+  </div>
 </form>
 {% endblock %}

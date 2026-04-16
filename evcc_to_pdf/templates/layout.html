@@ -14,11 +14,11 @@
         <a href="{{ ingress_path }}/">Dashboard</a>
         <a href="{{ ingress_path }}/settings">Einstellungen</a>
         <a href="{{ ingress_path }}/groups">Gruppen</a>
+        <a href="{{ ingress_path }}/templates">Templates</a>
         <a href="{{ ingress_path }}/report">Testbericht</a>
       </nav>
     </div>
   </header>
-
   <main class="container">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -31,5 +31,31 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
+  <script>
+    function toggleByValue(selectId, value, targetId) {
+      const el = document.getElementById(selectId);
+      const target = document.getElementById(targetId);
+      if (!el || !target) return;
+      target.style.display = el.value === value ? "grid" : "none";
+    }
+    document.addEventListener("DOMContentLoaded", function () {
+      const senderMode = document.getElementById("sender_mode");
+      const htmlMode = document.getElementById("html_mode");
+      const senderFields = document.getElementById("custom_sender_fields");
+      const htmlFields = document.getElementById("custom_html_fields");
+      function refreshGroupVisibility() {
+        if (senderMode && senderFields) {
+          senderFields.style.display = senderMode.value === "custom" ? "grid" : "none";
+        }
+        if (htmlMode && htmlFields) {
+          const showHtml = senderMode && senderMode.value === "custom" && htmlMode.value === "custom";
+          htmlFields.style.display = showHtml ? "grid" : "none";
+        }
+      }
+      if (senderMode) senderMode.addEventListener("change", refreshGroupVisibility);
+      if (htmlMode) htmlMode.addEventListener("change", refreshGroupVisibility);
+      refreshGroupVisibility();
+    });
+  </script>
 </body>
 </html>
