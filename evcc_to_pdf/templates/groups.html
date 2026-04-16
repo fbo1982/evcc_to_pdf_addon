@@ -115,7 +115,19 @@
         <div id="email_subject_block" class="subblock" style="{% if not edit_group or edit_group.email_subject_mode != 'custom' %}display:none{% endif %}">
           <label><span>Gruppenbezogener E-Mail-Betreff</span><input type="text" name="custom_email_subject" value="{{ edit_group.custom_email_subject if edit_group else '' }}"></label>
         </div>
-        <p class="muted">Shortcuts: {{period_label}}, {{period_start}}, {{period_end}}, {{period_month}}, {{period_year}}, {{billing_mode_label}}</p>
+        <details class="info-box">
+          <summary>Platzhalter für E-Mail-Betreff und E-Mail-Inhalt</summary>
+          <div class="info-box-body">
+            <div class="info-grid">
+              <div><code>{{period_label}}</code><p>Formatierter Abrechnungszeitraum, z. B. 03.2026 oder Q1 2026.</p></div>
+              <div><code>{{period_start}}</code><p>Startdatum des Abrechnungszeitraums.</p></div>
+              <div><code>{{period_end}}</code><p>Enddatum des Abrechnungszeitraums.</p></div>
+              <div><code>{{period_month}}</code><p>Monat des ausgewählten Zeitraums, z. B. 03.</p></div>
+              <div><code>{{period_year}}</code><p>Jahr des ausgewählten Zeitraums, z. B. 2026.</p></div>
+              <div><code>{{billing_mode_label}}</code><p>Bezeichnung des Abrechnungsmodus, z. B. Monatlich oder Quartal.</p></div>
+            </div>
+          </div>
+        </details>
       </div>
 
       <label><span>Abrechnungsmodus</span>

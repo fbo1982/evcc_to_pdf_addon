@@ -56,7 +56,21 @@
     </div>
     <label><span>Standard E-Mail-Betreff</span><input type="text" name="default_email_subject" value="{{ settings.reporting.default_email_subject }}"></label>
     <label><span>Standard E-Mail-Inhalt</span><textarea name="default_email_body" rows="6">{{ settings.reporting.default_email_body }}</textarea></label>
-    <p class="muted">Shortcuts für Betreff und Inhalt: {{period_label}}, {{period_start}}, {{period_end}}, {{period_month}}, {{period_year}}, {{billing_mode_label}}</p>
+    
+      <details class="info-box">
+        <summary>Platzhalter für E-Mail-Betreff und E-Mail-Inhalt</summary>
+        <div class="info-box-body">
+          <div class="info-grid">
+            <div><code>{{period_label}}</code><p>Formatierter Abrechnungszeitraum, z. B. 03.2026 oder Q1 2026.</p></div>
+            <div><code>{{period_start}}</code><p>Startdatum des Abrechnungszeitraums.</p></div>
+            <div><code>{{period_end}}</code><p>Enddatum des Abrechnungszeitraums.</p></div>
+            <div><code>{{period_month}}</code><p>Monat des ausgewählten Zeitraums, z. B. 03.</p></div>
+            <div><code>{{period_year}}</code><p>Jahr des ausgewählten Zeitraums, z. B. 2026.</p></div>
+            <div><code>{{billing_mode_label}}</code><p>Bezeichnung des Abrechnungsmodus, z. B. Monatlich oder Quartal.</p></div>
+          </div>
+        </div>
+      </details>
+
   </section>
 
   <section class="card">
