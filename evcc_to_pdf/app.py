@@ -28,7 +28,7 @@ REPORT_DIR = Path("/share/evcc-pdfs")
 OPTIONS_FILE = Path("/data/options.json")
 DEFAULT_TEMPLATE_KEY = "default"
 DEFAULT_TEMPLATE_LABEL = "Standard HTML"
-APP_VERSION = "0.5.6"
+APP_VERSION = "0.5.7"
 
 DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
 <html lang="de">
@@ -388,53 +388,65 @@ def fetch_available_assets(settings):
     base_url = str(settings["evcc"].get("url", "")).rstrip("/")
     session = evcc_session(settings)
 
+    def add_vehicle_entries(vehicle_container):
+        if isinstance(vehicle_container, dict):
+            for key, entry in vehicle_container.items():
+                # In vielen EVCC-Versionen ist der Schlüssel nur die interne db-ID (z.B. db:13),
+                # der lesbare Fahrzeugname steckt im title-Feld.
+                if isinstance(entry, dict):
+                    name = (
+                        entry.get("title")
+                        or entry.get("name")
+                        or entry.get("vehicle")
+                        or entry.get("id")
+                        or ""
+                    )
+                    name = str(name).strip()
+                    if name:
+                        assets.add(name)
+
+                    # Fallback: nur dann Key übernehmen, wenn er nicht wie eine interne EVCC-ID aussieht.
+                    key_name = str(key).strip()
+                    if key_name and not key_name.startswith("db:"):
+                        assets.add(key_name)
+                else:
+                    key_name = str(key).strip()
+                    if key_name and not key_name.startswith("db:"):
+                        assets.add(key_name)
+
+                    value_name = str(entry).strip()
+                    if value_name:
+                        assets.add(value_name)
+
+        elif isinstance(vehicle_container, list):
+            for entry in vehicle_container:
+                if isinstance(entry, dict):
+                    name = (
+                        entry.get("title")
+                        or entry.get("name")
+                        or entry.get("vehicle")
+                        or entry.get("id")
+                        or ""
+                    )
+                else:
+                    name = str(entry)
+
+                name = str(name).strip()
+                if name:
+                    assets.add(name)
+
     # 1) Alle in EVCC eingetragenen Fahrzeuge aus /api/state
     try:
         state_response = session.get(f"{base_url}/api/state", timeout=15)
         state_response.raise_for_status()
         state_data = state_response.json()
+
+        # EVCC kann vehicles je nach Version entweder direkt auf Top-Level
+        # oder unter result.vehicles liefern.
+        add_vehicle_entries(state_data.get("vehicles", []))
         result = state_data.get("result", {})
-
-        state_vehicles = result.get("vehicles", [])
-
-        # Manche EVCC-Installationen liefern vehicles als Dict,
-        # wobei der Fahrzeugname im Key steckt und im Value kein title/name vorhanden ist.
-        if isinstance(state_vehicles, dict):
-            for key, entry in state_vehicles.items():
-                key_name = str(key).strip()
-                if key_name:
-                    assets.add(key_name)
-
-                if isinstance(entry, dict):
-                    name = (
-                        entry.get("title")
-                        or entry.get("name")
-                        or entry.get("vehicle")
-                        or entry.get("id")
-                        or ""
-                    )
-                else:
-                    name = str(entry)
-
-                name = str(name).strip()
-                if name:
-                    assets.add(name)
-        else:
-            for entry in state_vehicles:
-                if isinstance(entry, dict):
-                    name = (
-                        entry.get("title")
-                        or entry.get("name")
-                        or entry.get("vehicle")
-                        or entry.get("id")
-                        or ""
-                    )
-                else:
-                    name = str(entry)
-
-                name = str(name).strip()
-                if name:
-                    assets.add(name)
+        if isinstance(result, dict):
+            add_vehicle_entries(result.get("vehicles", []))
     except Exception:
         pass
 
