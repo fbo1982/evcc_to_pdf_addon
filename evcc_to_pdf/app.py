@@ -28,7 +28,7 @@ REPORT_DIR = Path("/share/evcc-pdfs")
 OPTIONS_FILE = Path("/data/options.json")
 DEFAULT_TEMPLATE_KEY = "default"
 DEFAULT_TEMPLATE_LABEL = "Standard HTML"
-APP_VERSION = "0.5.4"
+APP_VERSION = "0.5.5"
 
 DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
 <html lang="de">
@@ -384,30 +384,63 @@ def fetch_sessions(settings):
     return result
 
 def fetch_available_assets(settings):
-    vehicles = set()
-    base_url = str(settings["evcc"].get("url","")).rstrip("/")
+    assets = set()
+    base_url = str(settings["evcc"].get("url", "")).rstrip("/")
     session = evcc_session(settings)
+
+    # 1) Alle in EVCC eingetragenen Fahrzeuge aus /api/state
     try:
         state_response = session.get(f"{base_url}/api/state", timeout=15)
         state_response.raise_for_status()
-        result = state_response.json().get("result", {})
+        state_data = state_response.json()
+        result = state_data.get("result", {})
+
         state_vehicles = result.get("vehicles", [])
-        if isinstance(state_vehicles, dict): state_vehicles = list(state_vehicles.values())
+        if isinstance(state_vehicles, dict):
+            state_vehicles = list(state_vehicles.values())
+
         for entry in state_vehicles:
-            name = extract_name(entry.get("title") or entry.get("name") or entry).strip()
-            if name: vehicles.add(name)
+            if isinstance(entry, dict):
+                name = (
+                    entry.get("title")
+                    or entry.get("name")
+                    or entry.get("vehicle")
+                    or entry.get("id")
+                    or ""
+                )
+            else:
+                name = str(entry)
+
+            name = str(name).strip()
+            if name:
+                assets.add(name)
     except Exception:
         pass
+
+    # 2) Zusätzlich alles aus Sessions ergänzen
     try:
         sessions = fetch_sessions(settings)
+        for s in sessions:
+            value = s.get("vehicle")
+            if value:
+                if isinstance(value, dict):
+                    name = (
+                        value.get("title")
+                        or value.get("name")
+                        or value.get("vehicle")
+                        or value.get("id")
+                        or ""
+                    )
+                else:
+                    name = str(value)
+
+                name = str(name).strip()
+                if name:
+                    assets.add(name)
     except Exception:
-        sessions = []
-    for s in sessions:
-        value = s.get("vehicle")
-        if value:
-            name = extract_name(value).strip()
-            if name: vehicles.add(name)
-    return sorted(vehicles, key=lambda x: x.lower())
+        pass
+
+    return sorted(assets, key=lambda x: x.lower())
 
 def get_ingress_path():
     return request.headers.get("X-Ingress-Path", "").rstrip("/")
