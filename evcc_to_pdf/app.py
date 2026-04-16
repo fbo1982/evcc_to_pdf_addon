@@ -28,7 +28,7 @@ REPORT_DIR = Path("/share/evcc-pdfs")
 OPTIONS_FILE = Path("/data/options.json")
 DEFAULT_TEMPLATE_KEY = "default"
 DEFAULT_TEMPLATE_LABEL = "Standard HTML"
-APP_VERSION = "0.5.5"
+APP_VERSION = "0.5.6"
 
 DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
 <html lang="de">
@@ -396,24 +396,45 @@ def fetch_available_assets(settings):
         result = state_data.get("result", {})
 
         state_vehicles = result.get("vehicles", [])
+
+        # Manche EVCC-Installationen liefern vehicles als Dict,
+        # wobei der Fahrzeugname im Key steckt und im Value kein title/name vorhanden ist.
         if isinstance(state_vehicles, dict):
-            state_vehicles = list(state_vehicles.values())
+            for key, entry in state_vehicles.items():
+                key_name = str(key).strip()
+                if key_name:
+                    assets.add(key_name)
 
-        for entry in state_vehicles:
-            if isinstance(entry, dict):
-                name = (
-                    entry.get("title")
-                    or entry.get("name")
-                    or entry.get("vehicle")
-                    or entry.get("id")
-                    or ""
-                )
-            else:
-                name = str(entry)
+                if isinstance(entry, dict):
+                    name = (
+                        entry.get("title")
+                        or entry.get("name")
+                        or entry.get("vehicle")
+                        or entry.get("id")
+                        or ""
+                    )
+                else:
+                    name = str(entry)
 
-            name = str(name).strip()
-            if name:
-                assets.add(name)
+                name = str(name).strip()
+                if name:
+                    assets.add(name)
+        else:
+            for entry in state_vehicles:
+                if isinstance(entry, dict):
+                    name = (
+                        entry.get("title")
+                        or entry.get("name")
+                        or entry.get("vehicle")
+                        or entry.get("id")
+                        or ""
+                    )
+                else:
+                    name = str(entry)
+
+                name = str(name).strip()
+                if name:
+                    assets.add(name)
     except Exception:
         pass
 
