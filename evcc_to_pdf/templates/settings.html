@@ -54,6 +54,8 @@
         </select>
       </label>
     </div>
+    <label><span>Standard E-Mail-Betreff</span><input type="text" name="default_email_subject" value="{{ settings.reporting.default_email_subject }}"></label>
+    <p class="muted">Der abgerechnete Zeitraum wird automatisch an den Betreff angehängt.</p>
     <label><span>Standard E-Mail-Inhalt</span><textarea name="default_email_body" rows="6">{{ settings.reporting.default_email_body }}</textarea></label>
   </section>
 

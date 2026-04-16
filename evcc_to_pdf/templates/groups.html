@@ -104,6 +104,17 @@
         <label><span>Gruppenbezogener E-Mail-Inhalt</span><textarea name="custom_email_body" rows="6">{{ edit_group.custom_email_body if edit_group else '' }}</textarea></label>
       </div>
 
+      <label><span>E-Mail Betreff</span>
+        <select name="email_subject_mode" id="email_subject_mode" onchange="toggleSection('email_subject_mode','custom','email_subject_block')">
+          <option value="default" {% if not edit_group or edit_group.email_subject_mode == 'default' %}selected{% endif %}>Standard</option>
+          <option value="custom" {% if edit_group and edit_group.email_subject_mode == 'custom' %}selected{% endif %}>Gruppenbezogen</option>
+        </select>
+      </label>
+      <div id="email_subject_block" class="subblock" style="{% if not edit_group or edit_group.email_subject_mode != 'custom' %}display:none{% endif %}">
+        <label><span>Gruppenbezogener E-Mail-Betreff</span><input type="text" name="custom_email_subject" value="{{ edit_group.custom_email_subject if edit_group else '' }}"></label>
+        <p class="muted">Der abgerechnete Zeitraum wird automatisch an den Betreff angehängt.</p>
+      </div>
+
       <label><span>Abrechnungsmodus</span>
         <select name="billing_mode_mode" id="billing_mode_mode" onchange="toggleSection('billing_mode_mode','custom','billing_block')">
           <option value="default" {% if not edit_group or edit_group.billing_mode_mode == 'default' %}selected{% endif %}>Standard</option>

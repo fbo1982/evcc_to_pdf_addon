@@ -28,7 +28,7 @@ REPORT_DIR = Path("/share/evcc-pdfs")
 OPTIONS_FILE = Path("/data/options.json")
 DEFAULT_TEMPLATE_KEY = "default"
 DEFAULT_TEMPLATE_LABEL = "Standard HTML"
-APP_VERSION = "0.5.8"
+APP_VERSION = "0.5.9"
 
 DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
 <html lang="de">
@@ -120,6 +120,7 @@ DEFAULT_SETTINGS = {
         "grid_price": 0.0,
         "default_billing_mode": "monthly",
         "default_email_body": "Bitte überweisen Sie den offenen Betrag auf das unten angegebene Konto.",
+        "default_email_subject": "EVCC Abrechnung",
     },
     "cached_assets": [],
     "groups": [],
@@ -260,6 +261,8 @@ def normalize_group(group):
         "selected_template_key": DEFAULT_TEMPLATE_KEY,
         "email_body_mode": "default",
         "custom_email_body": "",
+        "email_subject_mode": "default",
+        "custom_email_subject": "",
         "billing_mode_mode": "default",
         "custom_billing_mode": "monthly",
         "send_day": 1,
@@ -525,6 +528,14 @@ def period_label(start, end):
 def effective_sender(settings, group): return group.get("custom_sender", {}) if group.get("sender_mode") == "custom" else settings.get("sender", {})
 def effective_bank(settings, group): return group.get("custom_bank", {}) if group.get("bank_mode") == "custom" else settings.get("bank", {})
 def effective_email_body(settings, group): return group.get("custom_email_body", "") if group.get("email_body_mode") == "custom" else settings.get("reporting", {}).get("default_email_body", "")
+
+def effective_email_subject(settings, group, summary=None):
+    base_subject = group.get("custom_email_subject", "").strip() if group.get("email_subject_mode") == "custom" else settings.get("reporting", {}).get("default_email_subject", "").strip()
+    if not base_subject:
+        base_subject = "EVCC Abrechnung"
+    if summary:
+        return f"{base_subject} – {period_label(summary['period_start'], summary['period_end'])}"
+    return base_subject
 def effective_billing_mode(settings, group): return group.get("custom_billing_mode", "monthly") if group.get("billing_mode_mode") == "custom" else settings.get("reporting", {}).get("default_billing_mode", "monthly")
 def effective_template_key(settings, group):
     if group.get("html_mode") == "custom":
@@ -658,34 +669,59 @@ def generate_pdf(settings, group, mode=None, manual_year=None, manual_month=None
 
 def send_email_with_attachment(settings, group, pdf_path, summary):
     smtp_cfg = settings.get("smtp", {})
-    host = smtp_cfg.get("host","").strip()
-    if not host: raise ValueError("SMTP Host fehlt.")
-    port = int(smtp_cfg.get("port",587))
+    host = smtp_cfg.get("host", "").strip()
+    if not host:
+        raise ValueError("SMTP Host fehlt.")
+    port = int(smtp_cfg.get("port", 587))
     sender = effective_sender(settings, group)
-    sender_email = sender.get("email","").strip() or smtp_cfg.get("user","").strip()
-    recipient_email = group.get("recipient_email","").strip()
-    if not sender_email or not recipient_email: raise ValueError("Absender- oder Empfänger-E-Mail fehlt.")
+    sender_email = sender.get("email", "").strip() or smtp_cfg.get("user", "").strip()
+    recipient_email = group.get("recipient_email", "").strip()
+    if not sender_email or not recipient_email:
+        raise ValueError("Absender- oder Empfänger-E-Mail fehlt.")
 
-    msg = EmailMessage()
-    msg["From"] = sender_email
-    msg["To"] = recipient_email
-    if group.get("sender_copy_enabled") and sender_email:
-        msg["Cc"] = sender_email
-    msg["Subject"] = f"EVCC Abrechnung – {group.get('name','')} – {period_label(summary['period_start'], summary['period_end'])}"
-    msg.set_content(effective_email_body(settings, group) or "Anbei die Abrechnung als PDF.")
-    msg.add_attachment(pdf_path.read_bytes(), maintype="application", subtype="pdf", filename=pdf_path.name)
+    copy_email = sender.get("email", "").strip() or sender_email
+    copy_enabled = bool(group.get("sender_copy_enabled")) and bool(copy_email)
+    subject = effective_email_subject(settings, group, summary)
+    body = effective_email_body(settings, group) or "Anbei die Abrechnung als PDF."
+    pdf_bytes = pdf_path.read_bytes()
 
-    user = smtp_cfg.get("user","").strip()
-    password = smtp_cfg.get("password","")
+    def build_message(target_email, include_copy_header=False):
+        msg = EmailMessage()
+        msg["From"] = sender_email
+        msg["To"] = target_email
+        if include_copy_header and copy_enabled and copy_email != target_email:
+            msg["Cc"] = copy_email
+        msg["Subject"] = subject
+        msg.set_content(body)
+        msg.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=pdf_path.name)
+        return msg
+
+    user = smtp_cfg.get("user", "").strip()
+    password = smtp_cfg.get("password", "")
+
+    def send_via_server(server):
+        main_msg = build_message(recipient_email, include_copy_header=False)
+        recipients = [recipient_email]
+        if copy_enabled and copy_email and copy_email != recipient_email:
+            recipients.append(copy_email)
+            main_msg["Cc"] = copy_email
+        server.send_message(main_msg, to_addrs=recipients)
+
+        if copy_enabled and copy_email and copy_email != recipient_email:
+            copy_msg = build_message(copy_email, include_copy_header=False)
+            server.send_message(copy_msg, to_addrs=[copy_email])
+
     if bool(smtp_cfg.get("tls", True)):
         with smtplib.SMTP(host, port) as server:
             server.starttls(context=ssl.create_default_context())
-            if user: server.login(user, password)
-            server.send_message(msg)
+            if user:
+                server.login(user, password)
+            send_via_server(server)
     else:
         with smtplib.SMTP(host, port) as server:
-            if user: server.login(user, password)
-            server.send_message(msg)
+            if user:
+                server.login(user, password)
+            send_via_server(server)
 
 def scheduler_loop():
     while True:
@@ -746,6 +782,7 @@ def settings_page():
         settings["reporting"]["grid_price"] = parse_float(request.form.get("grid_price","0"),0.0)
         settings["reporting"]["default_billing_mode"] = request.form.get("default_billing_mode","monthly").strip()
         settings["reporting"]["default_email_body"] = request.form.get("default_email_body","").strip()
+        settings["reporting"]["default_email_subject"] = request.form.get("default_email_subject","").strip()
         save_settings(settings)
         flash("Einstellungen gespeichert.", "success")
         return redirect(f"{get_ingress_path()}/settings")
@@ -801,6 +838,8 @@ def groups_page():
         group["selected_template_key"] = request.form.get("selected_template_key",DEFAULT_TEMPLATE_KEY).strip()
         group["email_body_mode"] = request.form.get("email_body_mode","default").strip()
         group["custom_email_body"] = request.form.get("custom_email_body","").strip()
+        group["email_subject_mode"] = request.form.get("email_subject_mode","default").strip()
+        group["custom_email_subject"] = request.form.get("custom_email_subject","").strip()
         group["billing_mode_mode"] = request.form.get("billing_mode_mode","default").strip()
         group["custom_billing_mode"] = request.form.get("custom_billing_mode","monthly").strip()
         group["send_day"] = max(1, min(28, parse_int(request.form.get("send_day","1"),1)))
