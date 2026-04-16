@@ -36,7 +36,6 @@
     <h2>{{ "Gruppe bearbeiten" if edit_group else "Neue Gruppe" }}</h2>
     <form method="post" action="{{ ingress_path }}/groups" class="stack">
       <input type="hidden" name="group_id" value="{{ edit_group.id if edit_group else '' }}">
-
       <label class="checkbox"><input type="checkbox" name="active" {% if edit_group is none or edit_group.active %}checked{% endif %}><span>Aktiv</span></label>
 
       <label><span>Gruppenname</span><input type="text" name="name" value="{{ edit_group.name if edit_group else '' }}" required></label>

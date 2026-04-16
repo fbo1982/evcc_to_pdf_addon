@@ -1,6 +1,6 @@
 # Platzhalter für HTML-Templates
 
-## Kopfbereich
+## Empfänger
 - `{{ recipient.name }}`
 - `{{ recipient.company }}`
 - `{{ recipient.street }}`
@@ -8,12 +8,14 @@
 - `{{ recipient.city }}`
 - `{{ recipient.email }}`
 
+## Absender
 - `{{ sender.name }}`
 - `{{ sender.street }}`
 - `{{ sender.zip }}`
 - `{{ sender.city }}`
 - `{{ sender.email }}`
 
+## Zeit / Abrechnung
 - `{{ invoice_date }}`
 - `{{ billing_mode_label }}`
 - `{{ period_label }}`
@@ -21,23 +23,15 @@
 ## Tabelle
 - `{{ rows_html|safe }}`
 
-Jede Zeile enthält:
-- Datum
-- Startzeit
-- Endzeit
-- Fahrzeug
-- geladene kWh
-- Kosten
-
 ## Summen
 - `{{ total_energy_kwh }}`
 - `{{ total_cost_eur }}`
 
-## Bankverbindung
+## Bank
 - `{{ bank.recipient }}`
 - `{{ bank.iban }}`
 - `{{ bank.bic }}`
 - `{{ bank.institute }}`
 
-## Abschluss
+## Mailtext
 - `{{ email_body }}`

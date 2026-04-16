@@ -8,13 +8,12 @@
     <li><strong>Templates:</strong> {{ settings.templates|length }}</li>
     <li><strong>Scheduler:</strong> {{ "aktiv" if settings.scheduler.enabled else "inaktiv" }}</li>
     <li><strong>EVCC URL:</strong> {{ settings.evcc.url or "nicht gesetzt" }}</li>
-    <li><strong>MQTT Base:</strong> {{ "siehe Add-on Optionen" }}</li>
+    <li><strong>Storage:</strong> lokal führend, MQTT Spiegel</li>
   </ul>
   <form method="post" action="{{ ingress_path }}/refresh_assets">
     <button type="submit">Fahrzeuge aktualisieren</button>
   </form>
 </section>
-
 <section class="card">
   <h2>Geladene Fahrzeuge / Karten</h2>
   {% if settings.cached_assets %}
