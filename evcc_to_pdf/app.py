@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import re
@@ -117,6 +118,140 @@ DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
   </div>
 </body>
 </html>"""
+
+
+EDITOR_DATA_PREFIX = "<!-- EVCC_EDITOR_DATA_BASE64:"
+
+
+def build_default_editor_schema(raw_html=""):
+    raw_html = str(raw_html or "").strip()
+    blocks = [
+        {"id": str(uuid.uuid4()), "type": "heading", "title": "Überschrift", "level": 1, "text": "Ladebericht"},
+        {"id": str(uuid.uuid4()), "type": "text", "title": "Zeitraum", "text": "Zeitraum: {{ period_label }}"},
+        {"id": str(uuid.uuid4()), "type": "summary", "title": "Kennzahlen", "energy_label": "Gesamt geladen", "cost_label": "Gesamtkosten"},
+        {"id": str(uuid.uuid4()), "type": "table", "title": "Ladevorgänge", "heading": "Ladevorgänge", "show_cost": True},
+        {"id": str(uuid.uuid4()), "type": "text", "title": "Hinweis", "text": "Dieses Dokument wurde elektronisch erstellt und bedarf keiner Unterschrift."},
+    ]
+    if raw_html:
+        blocks = [{"id": str(uuid.uuid4()), "type": "html", "title": "Bestehendes HTML", "html": raw_html}]
+    return {"version": 1, "page": {"title": "EVCC Bericht", "accent": "#48c7ff"}, "blocks": blocks}
+
+
+def extract_editor_schema(content):
+    content = str(content or "")
+    match = re.search(r"<!-- EVCC_EDITOR_DATA_BASE64:([A-Za-z0-9+/=]+) -->", content)
+    if not match:
+        return None
+    try:
+        raw = base64.b64decode(match.group(1)).decode("utf-8")
+        schema = json.loads(raw)
+        if isinstance(schema, dict):
+            return schema
+    except Exception:
+        return None
+    return None
+
+
+def _editor_text_html(text):
+    lines = [line.strip() for line in str(text or "").splitlines()]
+    lines = [line for line in lines if line]
+    return "<br>".join(lines)
+
+
+def render_editor_template_html(schema):
+    schema = schema if isinstance(schema, dict) else build_default_editor_schema()
+    page = schema.get("page", {}) if isinstance(schema.get("page"), dict) else {}
+    accent = str(page.get("accent") or "#48c7ff")
+    body_parts = []
+    for block in schema.get("blocks", []):
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get("type")
+        title = str(block.get("title") or "")
+        if block_type == "heading":
+            level = int(block.get("level") or 1)
+            level = min(3, max(1, level))
+            body_parts.append(f'<section class="block"><h{level}>{block.get("text") or ""}</h{level}></section>')
+        elif block_type == "text":
+            body_parts.append(f'<section class="block"><p>{_editor_text_html(block.get("text"))}</p></section>')
+        elif block_type == "summary":
+            energy_label = block.get("energy_label") or "Gesamt geladen"
+            cost_label = block.get("cost_label") or "Gesamtkosten"
+            body_parts.append(f'''<section class="block">
+<div class="summary-grid">
+  <div class="metric-card">
+    <div class="metric-label">{energy_label}</div>
+    <div class="metric-value">{{{{ total_energy_kwh }}}} kWh</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">{cost_label}</div>
+    <div class="metric-value">{{{{ total_cost_eur }}}} €</div>
+  </div>
+</div>
+</section>''')
+        elif block_type == "table":
+            heading = block.get("heading") or title or "Ladevorgänge"
+            cost_header = '<th>Kosten (€)</th>' if block.get("show_cost", True) else ''
+            body_parts.append(f'''<section class="block">
+<h3>{heading}</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Datum</th>
+      <th>Startzeit</th>
+      <th>Endzeit</th>
+      <th>Fahrzeug</th>
+      <th>Geladene kWh</th>
+      {cost_header}
+    </tr>
+  </thead>
+  <tbody>
+    {{{{ rows_html|safe }}}}
+  </tbody>
+</table>
+</section>''')
+        elif block_type == "separator":
+            body_parts.append('<section class="block"><hr></section>')
+        elif block_type == "html":
+            body_parts.append(f'<section class="block raw-html">{block.get("html") or ""}</section>')
+    if not body_parts:
+        body_parts.append('<section class="block"><p>Leeres Template</p></section>')
+
+    html = f'''<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page {{
+      size: A4;
+      margin: 14mm 10mm 16mm 10mm;
+      @bottom-center {{
+        content: "- Seite " counter(page) " / " counter(pages) " -";
+        font-size: 9pt;
+        color: #445;
+      }}
+    }}
+    body {{ font-family: DejaVu Sans, Arial, sans-serif; font-size: 10pt; color: #111827; }}
+    h1, h2, h3 {{ margin: 0 0 10px; color: #0f172a; }}
+    p {{ margin: 0; line-height: 1.5; }}
+    .block {{ margin-bottom: 18px; }}
+    .summary-grid {{ display: table; width: 100%; border-spacing: 8px 0; margin: 10px -8px 0; }}
+    .metric-card {{ display: table-cell; width: 50%; padding: 14px; background: #eff6ff; border: 1px solid #dbeafe; border-radius: 12px; }}
+    .metric-label {{ color: #475569; font-size: 9pt; margin-bottom: 6px; }}
+    .metric-value {{ font-size: 18pt; font-weight: bold; color: {accent}; }}
+    hr {{ border: 0; border-top: 1px solid #cbd5e1; }}
+    table {{ width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }}
+    th, td {{ border: 1px solid #94a3b8; padding: 6px; vertical-align: top; word-break: break-word; }}
+    th {{ background: #e2e8f0; text-align: left; }}
+    .raw-html > *:first-child {{ margin-top: 0; }}
+  </style>
+</head>
+<body>
+{"".join(body_parts)}
+</body>
+</html>'''
+    encoded = base64.b64encode(json.dumps(schema, ensure_ascii=False).encode("utf-8")).decode("ascii")
+    return f"{EDITOR_DATA_PREFIX}{encoded} -->\n" + html
 
 DEFAULT_SETTINGS = {
     "meta": {"version": APP_VERSION},
@@ -979,6 +1114,35 @@ def groups_page():
     if edit_id:
         edit_group = find_group(settings, edit_id)
     return render_template("groups.html", settings=settings, edit_group=edit_group)
+
+
+
+@app.route("/templates/editor", methods=["GET", "POST"])
+def template_editor_page():
+    settings = load_settings()
+    key = request.values.get("key", "").strip()
+    edit_template = settings["templates"].get(key) if key else None
+    if request.method == "POST":
+        key = request.form.get("key", "").strip()
+        label = request.form.get("label", "").strip()
+        schema_raw = request.form.get("editor_schema", "").strip()
+        if not key or not label:
+            flash("Key und Bezeichnung sind erforderlich.", "error")
+            return redirect(f"{get_ingress_path()}/templates/editor" + (f"?key={key}" if key else ""))
+        try:
+            schema = json.loads(schema_raw) if schema_raw else build_default_editor_schema()
+        except Exception:
+            flash("Editor-Daten konnten nicht verarbeitet werden.", "error")
+            return redirect(f"{get_ingress_path()}/templates/editor" + (f"?key={key}" if key else ""))
+        settings["templates"][key] = {"key": key, "label": label, "content": render_editor_template_html(schema)}
+        save_settings(settings)
+        flash("Template aus dem Editor gespeichert.", "success")
+        return redirect(f"{get_ingress_path()}/templates?edit={key}")
+
+    schema = extract_editor_schema(edit_template.get("content", "") if edit_template else "")
+    if not schema:
+        schema = build_default_editor_schema(edit_template.get("content", "") if edit_template else "")
+    return render_template("template_editor.html", settings=settings, edit_template=edit_template, editor_schema=schema, editor_key=key)
 
 @app.route("/templates", methods=["GET","POST"])
 def templates_page():

@@ -13,6 +13,7 @@
         </div>
         <div class="group-actions">
           <a class="button secondary" href="{{ ingress_path }}/templates?edit={{ key }}">Bearbeiten</a>
+          <a class="button secondary" href="{{ ingress_path }}/templates/editor?key={{ key }}">Im Editor</a>
           {% if key != settings.default_template_key %}
           <form method="post" action="{{ ingress_path }}/templates">
             <input type="hidden" name="form_action" value="set_default">
@@ -32,7 +33,7 @@
   </section>
 
   <section class="card">
-    <h2>{{ "Template bearbeiten" if edit_template else "Neues Template" }}</h2>
+    <div class="card-head"><h2>{{ "Template bearbeiten" if edit_template else "Neues Template" }}</h2><a class="button secondary" href="{{ ingress_path }}/templates/editor{% if edit_template %}?key={{ edit_template.key }}{% endif %}">Grafischer Editor</a></div>
     <form method="post" action="{{ ingress_path }}/templates" enctype="multipart/form-data" class="stack">
       <label><span>Template Key</span><input type="text" name="key" value="{{ edit_template.key if edit_template else '' }}"></label>
       <label><span>Bezeichnung</span><input type="text" name="label" value="{{ edit_template.label if edit_template else '' }}"></label>

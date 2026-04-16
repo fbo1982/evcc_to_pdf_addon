@@ -63,3 +63,28 @@ button.danger { background:#ff5a5a; color:white; }
 .info-grid p { margin:0; color:var(--muted); font-size:14px; }
 .card h3 { margin:0 0 10px; font-size:22px; }
 @media (max-width: 720px) { .info-grid { grid-template-columns:1fr; } }
+
+.editor-toolbar-main { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; flex-wrap:wrap; }
+.editor-layout { display:grid; grid-template-columns: 240px minmax(0,1fr) 320px; gap:22px; align-items:start; }
+@media (max-width: 1200px) { .editor-layout { grid-template-columns:1fr; } }
+.editor-sidebar { position:sticky; top:16px; }
+.builder-palette { display:grid; gap:10px; margin-bottom:16px; }
+.builder-add { width:100%; justify-content:flex-start; background:#0d2350; color:var(--text); border:1px dashed var(--accent); }
+.builder-canvas { min-height:620px; display:grid; gap:14px; }
+.builder-block { border:1px solid var(--border); border-radius:18px; padding:14px; background:#102753; cursor:pointer; }
+.builder-block.active { outline:2px solid var(--accent); }
+.builder-block.dragging { opacity:.5; }
+.builder-block-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:12px; }
+.builder-block-actions { display:flex; gap:8px; }
+.builder-block-actions button { min-width:40px; width:40px; padding:8px 0; border-radius:12px; background:transparent; color:var(--accent); border:1px solid var(--border); }
+.builder-block-preview { background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:14px; padding:14px; }
+.builder-empty { min-height:160px; display:grid; place-items:center; border:2px dashed var(--border); border-radius:18px; color:var(--muted); }
+.builder-inspector { display:grid; gap:12px; }
+.builder-preview { width:100%; min-height:420px; border-radius:16px; border:1px solid var(--border); background:white; }
+.small { font-size:13px; }
+.mini-summary { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.mini-summary div { background:#eff6ff; border:1px solid #bfdbfe; border-radius:12px; padding:12px; color:#0f172a; }
+.mini-summary span { display:block; font-size:12px; color:#64748b; margin-bottom:4px; }
+.mini-table { width:100%; border-collapse:collapse; margin-top:10px; }
+.mini-table th, .mini-table td { border:1px solid #94a3b8; padding:6px; color:#0f172a; }
+.mini-html { color:#0f172a; }

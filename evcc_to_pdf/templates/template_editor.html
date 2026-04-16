@@ -1,0 +1,252 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="editor-shell" data-ingress="{{ ingress_path }}">
+  <form method="post" action="{{ ingress_path }}/templates/editor" id="editorForm">
+    <input type="hidden" name="editor_schema" id="editorSchemaInput">
+    <div class="editor-toolbar card">
+      <div class="editor-toolbar-main">
+        <div>
+          <h2>Grafischer Template-Editor</h2>
+          <p class="muted">Bausteine links hinzufügen, in der Mitte sortieren, rechts bearbeiten.</p>
+        </div>
+        <div class="actions">
+          <a class="button secondary" href="{{ ingress_path }}/templates">Zurück</a>
+          <button type="submit">Template speichern</button>
+        </div>
+      </div>
+      <div class="form-grid">
+        <label><span>Template Key</span><input type="text" name="key" id="tplKey" value="{{ edit_template.key if edit_template else editor_key }}"></label>
+        <label><span>Bezeichnung</span><input type="text" name="label" id="tplLabel" value="{{ edit_template.label if edit_template else '' }}"></label>
+      </div>
+    </div>
+
+    <div class="editor-layout">
+      <aside class="card editor-sidebar">
+        <h3>Bausteine</h3>
+        <div class="builder-palette">
+          <button type="button" class="builder-add" data-type="heading">Überschrift</button>
+          <button type="button" class="builder-add" data-type="text">Text</button>
+          <button type="button" class="builder-add" data-type="summary">Kennzahlen</button>
+          <button type="button" class="builder-add" data-type="table">Tabelle</button>
+          <button type="button" class="builder-add" data-type="separator">Trennlinie</button>
+          <button type="button" class="builder-add" data-type="html">Freies HTML</button>
+        </div>
+        <div class="subblock">
+          <strong>Platzhalter</strong>
+          <div class="chips">
+            <span class="chip">{{ '{{ period_label }}' }}</span>
+            <span class="chip">{{ '{{ billing_mode_label }}' }}</span>
+            <span class="chip">{{ '{{ total_energy_kwh }}' }}</span>
+            <span class="chip">{{ '{{ total_cost_eur }}' }}</span>
+            <span class="chip">{{ '{{ rows_html|safe }}' }}</span>
+          </div>
+        </div>
+      </aside>
+
+      <section class="card editor-canvas-wrap">
+        <div class="card-head">
+          <div>
+            <h3>Seite</h3>
+            <span class="muted">Drag & Drop zum Umordnen</span>
+          </div>
+          <button type="button" class="button secondary" id="previewRefresh">Vorschau aktualisieren</button>
+        </div>
+        <div id="builderCanvas" class="builder-canvas"></div>
+      </section>
+
+      <aside class="card editor-sidebar">
+        <h3>Eigenschaften</h3>
+        <div id="builderInspector" class="builder-inspector muted">Wähle einen Baustein aus.</div>
+        <hr>
+        <h3>Live-Vorschau</h3>
+        <iframe id="builderPreview" class="builder-preview"></iframe>
+      </aside>
+    </div>
+  </form>
+</div>
+
+<script>
+const initialSchema = {{ editor_schema|tojson }};
+const state = {
+  schema: initialSchema && typeof initialSchema === 'object' ? initialSchema : { version: 1, page: { title: 'EVCC Bericht', accent: '#48c7ff' }, blocks: [] },
+  selectedId: null,
+};
+
+const canvas = document.getElementById('builderCanvas');
+const inspector = document.getElementById('builderInspector');
+const schemaInput = document.getElementById('editorSchemaInput');
+const previewFrame = document.getElementById('builderPreview');
+const form = document.getElementById('editorForm');
+
+function uid() {
+  return 'b-' + Math.random().toString(36).slice(2, 10);
+}
+
+function blockFactory(type) {
+  if (type === 'heading') return { id: uid(), type, title: 'Überschrift', level: 1, text: 'Neue Überschrift' };
+  if (type === 'text') return { id: uid(), type, title: 'Text', text: 'Text mit {{ period_label }}' };
+  if (type === 'summary') return { id: uid(), type, title: 'Kennzahlen', energy_label: 'Gesamt geladen', cost_label: 'Gesamtkosten' };
+  if (type === 'table') return { id: uid(), type, title: 'Tabelle', heading: 'Ladevorgänge', show_cost: true };
+  if (type === 'separator') return { id: uid(), type, title: 'Trennlinie' };
+  return { id: uid(), type: 'html', title: 'Freies HTML', html: '<div><strong>Eigenes HTML</strong></div>' };
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function previewForBlock(block) {
+  if (block.type === 'heading') return `<h${block.level || 1}>${escapeHtml(block.text || '')}</h${block.level || 1}>`;
+  if (block.type === 'text') return `<p>${escapeHtml(block.text || '').replace(/\n/g, '<br>')}</p>`;
+  if (block.type === 'summary') return `<div class="mini-summary"><div><span>${escapeHtml(block.energy_label || 'Gesamt geladen')}</span><strong>142,38 kWh</strong></div><div><span>${escapeHtml(block.cost_label || 'Gesamtkosten')}</span><strong>41,32 €</strong></div></div>`;
+  if (block.type === 'table') return `<div><strong>${escapeHtml(block.heading || 'Ladevorgänge')}</strong><table class="mini-table"><tr><th>Datum</th><th>Fahrzeug</th><th>kWh</th>${block.show_cost ? '<th>€</th>' : ''}</tr><tr><td>30.06.2024</td><td>ID.4</td><td>7,38</td>${block.show_cost ? '<td>2,14</td>' : ''}</tr></table></div>`;
+  if (block.type === 'separator') return '<hr>';
+  return `<div class="mini-html">${block.html || ''}</div>`;
+}
+
+function renderCanvas() {
+  canvas.innerHTML = '';
+  (state.schema.blocks || []).forEach((block, index) => {
+    const item = document.createElement('div');
+    item.className = 'builder-block' + (state.selectedId === block.id ? ' active' : '');
+    item.draggable = true;
+    item.dataset.id = block.id;
+    item.innerHTML = `
+      <div class="builder-block-head">
+        <div>
+          <strong>${escapeHtml(block.title || block.type)}</strong>
+          <div class="muted small">${escapeHtml(block.type)}</div>
+        </div>
+        <div class="builder-block-actions">
+          <button type="button" data-act="up">↑</button>
+          <button type="button" data-act="down">↓</button>
+          <button type="button" data-act="delete">✕</button>
+        </div>
+      </div>
+      <div class="builder-block-preview">${previewForBlock(block)}</div>
+    `;
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      state.selectedId = block.id;
+      renderAll();
+    });
+    item.addEventListener('dragstart', () => item.classList.add('dragging'));
+    item.addEventListener('dragend', () => item.classList.remove('dragging'));
+    item.addEventListener('dragover', (e) => e.preventDefault());
+    item.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const dragId = document.querySelector('.builder-block.dragging')?.dataset.id;
+      if (!dragId || dragId === block.id) return;
+      const blocks = state.schema.blocks;
+      const from = blocks.findIndex(b => b.id === dragId);
+      const to = blocks.findIndex(b => b.id === block.id);
+      const [moved] = blocks.splice(from, 1);
+      blocks.splice(to, 0, moved);
+      renderAll();
+    });
+    item.querySelectorAll('button').forEach(btn => btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const act = btn.dataset.act;
+      const blocks = state.schema.blocks;
+      const pos = blocks.findIndex(b => b.id === block.id);
+      if (act === 'delete') {
+        blocks.splice(pos, 1);
+        if (state.selectedId === block.id) state.selectedId = blocks[0]?.id || null;
+      } else if (act === 'up' && pos > 0) {
+        [blocks[pos - 1], blocks[pos]] = [blocks[pos], blocks[pos - 1]];
+      } else if (act === 'down' && pos < blocks.length - 1) {
+        [blocks[pos + 1], blocks[pos]] = [blocks[pos], blocks[pos + 1]];
+      }
+      renderAll();
+    }));
+    canvas.appendChild(item);
+    if (index === 0 && !state.selectedId) state.selectedId = block.id;
+  });
+  if (!state.schema.blocks.length) {
+    canvas.innerHTML = '<div class="builder-empty">Noch keine Bausteine. Links einen Baustein hinzufügen.</div>';
+  }
+}
+
+function selectedBlock() {
+  return (state.schema.blocks || []).find(block => block.id === state.selectedId) || null;
+}
+
+function updateBlock(field, value) {
+  const block = selectedBlock();
+  if (!block) return;
+  block[field] = value;
+  if (field === 'text' && !block.title) block.title = value.slice(0, 30);
+  renderAll(false);
+}
+
+function renderInspector() {
+  const block = selectedBlock();
+  if (!block) {
+    inspector.className = 'builder-inspector muted';
+    inspector.innerHTML = 'Wähle einen Baustein aus.';
+    return;
+  }
+  inspector.className = 'builder-inspector';
+  let html = `
+    <label><span>Titel intern</span><input type="text" data-field="title" value="${escapeHtml(block.title || '')}"></label>
+    <div class="muted small">Typ: ${escapeHtml(block.type)}</div>
+  `;
+  if (block.type === 'heading') {
+    html += `<label><span>Text</span><input type="text" data-field="text" value="${escapeHtml(block.text || '')}"></label>
+    <label><span>Ebene</span><select data-field="level"><option value="1" ${String(block.level) === '1' ? 'selected' : ''}>H1</option><option value="2" ${String(block.level) === '2' ? 'selected' : ''}>H2</option><option value="3" ${String(block.level) === '3' ? 'selected' : ''}>H3</option></select></label>`;
+  } else if (block.type === 'text') {
+    html += `<label><span>Text</span><textarea rows="6" data-field="text">${escapeHtml(block.text || '')}</textarea></label>`;
+  } else if (block.type === 'summary') {
+    html += `<label><span>Label Energie</span><input type="text" data-field="energy_label" value="${escapeHtml(block.energy_label || '')}"></label>
+    <label><span>Label Kosten</span><input type="text" data-field="cost_label" value="${escapeHtml(block.cost_label || '')}"></label>`;
+  } else if (block.type === 'table') {
+    html += `<label><span>Überschrift</span><input type="text" data-field="heading" value="${escapeHtml(block.heading || '')}"></label>
+    <label class="checkbox"><input type="checkbox" data-field="show_cost" ${block.show_cost ? 'checked' : ''}><span>Kostenspalte anzeigen</span></label>`;
+  } else if (block.type === 'html') {
+    html += `<label><span>HTML</span><textarea rows="10" data-field="html">${escapeHtml(block.html || '')}</textarea></label>`;
+  }
+  inspector.innerHTML = html;
+  inspector.querySelectorAll('[data-field]').forEach((input) => {
+    const eventName = input.tagName === 'SELECT' || input.type === 'checkbox' ? 'change' : 'input';
+    input.addEventListener(eventName, () => {
+      const field = input.dataset.field;
+      const value = input.type === 'checkbox' ? input.checked : input.value;
+      updateBlock(field, value);
+    });
+  });
+}
+
+function buildPreviewHtml() {
+  const blocks = state.schema.blocks || [];
+  const preview = blocks.map(block => previewForBlock(block)).join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    body{font-family:Arial,sans-serif;background:#fff;color:#111827;padding:24px;font-size:14px}
+    h1,h2,h3{margin:0 0 12px} p{line-height:1.5} .mini-summary{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.mini-summary div{border:1px solid #cbd5e1;background:#eff6ff;border-radius:12px;padding:14px}.mini-summary span{display:block;color:#64748b;margin-bottom:4px}.mini-summary strong{font-size:20px;color:${state.schema.page?.accent || '#48c7ff'}} .mini-table{width:100%;border-collapse:collapse;margin-top:8px}.mini-table th,.mini-table td{border:1px solid #94a3b8;padding:6px;text-align:left} hr{border:0;border-top:1px solid #cbd5e1;margin:16px 0}
+  </style></head><body>${preview}</body></html>`;
+}
+
+function renderPreview() {
+  previewFrame.srcdoc = buildPreviewHtml();
+}
+
+function renderAll(refreshPreview = true) {
+  schemaInput.value = JSON.stringify(state.schema);
+  renderCanvas();
+  renderInspector();
+  if (refreshPreview) renderPreview();
+}
+
+document.querySelectorAll('.builder-add').forEach((button) => {
+  button.addEventListener('click', () => {
+    const block = blockFactory(button.dataset.type);
+    state.schema.blocks.push(block);
+    state.selectedId = block.id;
+    renderAll();
+  });
+});
+
+document.getElementById('previewRefresh').addEventListener('click', renderPreview);
+form.addEventListener('submit', () => { schemaInput.value = JSON.stringify(state.schema); });
+renderAll();
+</script>
+{% endblock %}
