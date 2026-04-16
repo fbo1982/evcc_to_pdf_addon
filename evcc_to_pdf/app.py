@@ -28,7 +28,7 @@ REPORT_DIR = Path("/share/evcc-pdfs")
 OPTIONS_FILE = Path("/data/options.json")
 DEFAULT_TEMPLATE_KEY = "default"
 DEFAULT_TEMPLATE_LABEL = "Standard HTML"
-APP_VERSION = "0.6.6"
+APP_VERSION = "0.7.0"
 
 DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
 <html lang="de">
@@ -124,7 +124,7 @@ DEFAULT_SETTINGS = {
     "sender": {"name": "", "street": "", "zip": "", "city": "", "email": ""},
     "smtp": {"host": "", "port": 587, "user": "", "password": "", "tls": True},
     "bank": {"recipient": "", "iban": "", "bic": "", "institute": ""},
-    "scheduler": {"enabled": False, "day_of_month": 1, "time": "07:00", "last_run": ""},
+    "scheduler": {"enabled": False, "day_of_month": 1, "time": "07:00", "last_run": "", "period_history": {}},
     "reporting": {
         "grid_price": 0.0,
         "default_billing_mode": "monthly",
@@ -500,6 +500,38 @@ def find_group(settings, group_id):
         if group.get("id") == group_id:
             return group
     return None
+
+def schedule_months_for_mode(mode):
+    if mode == "monthly":
+        return set(range(1, 13))
+    if mode == "quarterly":
+        return {1, 4, 7, 10}
+    if mode == "halfyearly":
+        return {1, 7}
+    if mode == "yearly":
+        return {1}
+    return set(range(1, 13))
+
+def build_period_key(start, end, mode):
+    return f"{mode}:{start.strftime('%Y%m%d')}:{end.strftime('%Y%m%d')}"
+
+def scheduler_due_for_group(now, settings, group):
+    scheduler_cfg = settings.get("scheduler", {})
+    send_day = int(group.get("send_day") or scheduler_cfg.get("day_of_month", 1) or 1)
+    send_day = max(1, min(28, send_day))
+    mode = effective_billing_mode(settings, group)
+    if now.month not in schedule_months_for_mode(mode):
+        return False, None
+    if now.day != send_day:
+        return False, None
+    period_start, period_end = period_for_mode(now, mode)
+    period_key = build_period_key(period_start, period_end, mode)
+    history = scheduler_cfg.get("period_history", {})
+    if not isinstance(history, dict):
+        history = {}
+    if history.get(group.get("id")) == period_key:
+        return False, period_key
+    return True, period_key
 
 def period_for_mode(reference_date, mode):
     ref = reference_date.replace(day=1)

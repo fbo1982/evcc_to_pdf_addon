@@ -1,4 +1,4 @@
-# EVCC to PDF v0.6.6
+# EVCC to PDF v0.7.0
 
 Safe-storage Version.
 
