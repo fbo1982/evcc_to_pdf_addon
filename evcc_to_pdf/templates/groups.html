@@ -16,7 +16,10 @@
               <strong>{{ group.name }}</strong><br>
               <span class="muted">{{ group.recipient_company }} · {{ group.recipient_email }}</span><br>
               <span class="muted">{{ group.vehicles|join(", ") }}</span><br>
-              <span class="muted">Absender: {{ "gruppenbezogen" if group.sender_mode == "custom" else "standard" }}</span>
+              <span class="muted">Absender: {{ "gruppenbezogen" if group.sender_mode == "custom" else "standard" }}</span><br>
+              <span class="muted">HTML: {{ "eigen" if group.html_mode == "custom" else "standard" }}</span><br>
+              <span class="muted">E-Mail: {{ "custom" if group.email_mode == "custom" else "standard" }}</span><br>
+              <span class="muted">Abrechnung: {{ group.billing_mode_custom if group.billing_mode_scope == "custom" else ui.reporting.billing_mode_default }}</span>
             </div>
             <div class="group-actions">
               <a class="button secondary" href="{{ ingress_path }}/groups?edit={{ group.id }}">Bearbeiten</a>
@@ -64,23 +67,54 @@
           <label><span>PLZ</span><input type="text" name="custom_sender_zip" value="{{ edit_group.custom_sender.zip if edit_group else '' }}"></label>
           <label><span>Ort</span><input type="text" name="custom_sender_city" value="{{ edit_group.custom_sender.city if edit_group else '' }}"></label>
         </div>
+      </div>
 
-        <label><span>HTML</span>
-          <select name="html_mode" id="html_mode">
-            <option value="default" {% if not edit_group or edit_group.html_mode == 'default' %}selected{% endif %}>Standard HTML</option>
-            <option value="custom" {% if edit_group and edit_group.html_mode == 'custom' %}selected{% endif %}>Eigenes HTML</option>
+      <label><span>HTML</span>
+        <select name="html_mode" id="html_mode">
+          <option value="default" {% if not edit_group or edit_group.html_mode == 'default' %}selected{% endif %}>Standard HTML</option>
+          <option value="custom" {% if edit_group and edit_group.html_mode == 'custom' %}selected{% endif %}>Eigenes HTML</option>
+        </select>
+      </label>
+
+      <div id="custom_html_fields" class="stack">
+        <label><span>HTML-Template</span>
+          <select name="template_id">
+            {% for tpl in ui.templates.values() %}
+              <option value="{{ tpl.id }}" {% if edit_group and edit_group.template_id == tpl.id %}selected{% endif %}>{{ tpl.label }}</option>
+            {% endfor %}
           </select>
         </label>
+      </div>
 
-        <div id="custom_html_fields" class="stack">
-          <label><span>HTML-Template</span>
-            <select name="template_id">
-              {% for tpl in ui.templates.values() %}
-                <option value="{{ tpl.id }}" {% if edit_group and edit_group.template_id == tpl.id %}selected{% endif %}>{{ tpl.label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-        </div>
+      <label><span>E-Mail-Text</span>
+        <select name="email_mode" id="email_mode">
+          <option value="default" {% if not edit_group or edit_group.email_mode == 'default' %}selected{% endif %}>Standard-E-Mail-Inhalt</option>
+          <option value="custom" {% if edit_group and edit_group.email_mode == 'custom' %}selected{% endif %}>Gruppenbezogener E-Mail-Inhalt</option>
+        </select>
+      </label>
+
+      <div id="custom_email_fields" class="stack">
+        <label><span>Eigener E-Mail-Inhalt</span>
+          <textarea name="custom_email_body" rows="8">{{ edit_group.custom_email_body if edit_group else '' }}</textarea>
+        </label>
+      </div>
+
+      <label><span>Abrechnungsmodus</span>
+        <select name="billing_mode_scope" id="billing_mode_scope">
+          <option value="default" {% if not edit_group or edit_group.billing_mode_scope == 'default' %}selected{% endif %}>Standard-Abrechnungsmodus</option>
+          <option value="custom" {% if edit_group and edit_group.billing_mode_scope == 'custom' %}selected{% endif %}>Gruppenbezogener Abrechnungsmodus</option>
+        </select>
+      </label>
+
+      <div id="custom_billing_fields" class="stack">
+        <label><span>Eigener Abrechnungsmodus</span>
+          <select name="billing_mode_custom">
+            <option value="monthly" {% if edit_group and edit_group.billing_mode_custom == 'monthly' %}selected{% endif %}>Monatlich</option>
+            <option value="quarterly" {% if edit_group and edit_group.billing_mode_custom == 'quarterly' %}selected{% endif %}>Quartal</option>
+            <option value="halfyearly" {% if edit_group and edit_group.billing_mode_custom == 'halfyearly' %}selected{% endif %}>Halbjährlich</option>
+            <option value="yearly" {% if edit_group and edit_group.billing_mode_custom == 'yearly' %}selected{% endif %}>Jährlich</option>
+          </select>
+        </label>
       </div>
 
       <fieldset>

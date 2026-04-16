@@ -19,3 +19,10 @@ Version 0.4.0
 ## MQTT Topics
 - `<base>/config/ui`
 - `<base>/config/templates`
+
+
+## Neu in 0.4.1
+- Abrechnungsmodus Standard/Gruppe: monatlich, quartal, halbjährlich, jährlich
+- Standard-E-Mail-Inhalt global, optional gruppenbezogen
+- Standard-HTML-Template global, optional gruppenbezogen
+- Templates können gelöscht und als Standard markiert werden

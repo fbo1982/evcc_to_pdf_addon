@@ -8,7 +8,10 @@
         <div class="group-item">
           <div>
             <strong>{{ tpl.label }}</strong><br>
-            <span class="muted">{{ tpl.id }}</span>
+            <span class="muted">{{ tpl.id }}</span><br>
+            {% if ui.reporting.default_template_id == tpl.id %}
+              <span class="muted">Standard-Template</span>
+            {% endif %}
           </div>
           <div class="group-actions">
             <a class="button secondary" href="{{ ingress_path }}/templates?edit={{ tpl.id }}">Bearbeiten</a>
@@ -30,6 +33,10 @@
     <form method="post" action="{{ ingress_path }}/templates" class="stack">
       <input type="hidden" name="template_id" value="{{ edit_template.id if edit_template else '' }}">
       <label><span>Bezeichnung</span><input type="text" name="template_label" value="{{ edit_template.label if edit_template else '' }}" required></label>
+      <label class="checkbox">
+        <input type="checkbox" name="template_default" {% if edit_template and ui.reporting.default_template_id == edit_template.id %}checked{% endif %}>
+        <span>Als Standard-HTML verwenden</span>
+      </label>
       <label><span>HTML-Inhalt</span><textarea name="template_content" rows="16">{{ edit_template.content if edit_template else '' }}</textarea></label>
       <div class="actions">
         <button type="submit">Speichern</button>

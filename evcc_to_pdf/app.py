@@ -1,3 +1,4 @@
+
 import json
 import os
 import uuid
@@ -10,7 +11,6 @@ import requests
 from flask import Flask, flash, redirect, render_template, request
 from paho.mqtt import publish, subscribe
 
-
 APP_PORT = 8099
 APP_DIR = Path("/addon_config/evcc_to_pdf")
 FALLBACK_UI_FILE = APP_DIR / "ui_fallback.json"
@@ -18,6 +18,14 @@ SECRETS_FILE = APP_DIR / "secrets.json"
 REPORT_DIR = Path("/share/evcc-pdfs")
 OPTIONS_FILE = Path("/data/options.json")
 
+DEFAULT_HTML = (
+    "<html><body>"
+    "<h1>{{ group.name }}</h1>"
+    "<p>{{ recipient.recipient_company }}</p>"
+    "<p>{{ period_label }}</p>"
+    "<p>{{ summary.total_price }} EUR</p>"
+    "</body></html>"
+)
 
 DEFAULT_UI = {
     "evcc": {
@@ -43,6 +51,9 @@ DEFAULT_UI = {
     },
     "reporting": {
         "grid_price": 0.0,
+        "billing_mode_default": "monthly",
+        "default_template_id": "default",
+        "default_email_body": "Hallo,\n\nanbei die Abrechnung.\n\nViele Grüße",
     },
     "cached_vehicles": [],
     "groups": [],
@@ -50,11 +61,7 @@ DEFAULT_UI = {
         "default": {
             "id": "default",
             "label": "Standard HTML",
-            "content": (
-                "<html><body><h1>{{ group.name }}</h1>"
-                "<p>{{ recipient.recipient_company }}</p>"
-                "<p>{{ summary.total_price }} EUR</p></body></html>"
-            ),
+            "content": DEFAULT_HTML,
         }
     },
 }
@@ -173,114 +180,6 @@ def normalize_template_id(value: str) -> str:
     return value.strip("_") or str(uuid.uuid4())
 
 
-def load_ui_data() -> dict:
-    ensure_dirs()
-    data = deepcopy(DEFAULT_UI)
-    local = load_local_fallback()
-    data = deep_merge(data, local)
-
-    try:
-        msg = subscribe.simple(topic_ui(), retained=True, timeout=2, **mqtt_connection_kwargs())
-        if msg and getattr(msg, "payload", None):
-            payload = msg.payload.decode("utf-8")
-            if payload:
-                mqtt_data = json.loads(payload)
-                data = deep_merge(data, mqtt_data)
-    except Exception:
-        pass
-
-    return normalize_ui_data(data)
-
-
-def save_ui_data(data: dict) -> None:
-    ensure_dirs()
-    data = normalize_ui_data(data)
-    save_local_fallback(data)
-    try:
-        publish.single(
-            topic_ui(),
-            payload=json.dumps(data, ensure_ascii=False),
-            retain=True,
-            qos=1,
-            **mqtt_connection_kwargs(),
-        )
-    except Exception:
-        pass
-
-
-def normalize_ui_data(data: dict) -> dict:
-    merged = deep_merge(DEFAULT_UI, data or {})
-
-    merged["cached_vehicles"] = [normalize_vehicle_entry(v) for v in merged.get("cached_vehicles", [])]
-    merged["cached_vehicles"] = [v for v in merged["cached_vehicles"] if v.get("name")]
-
-    templates = {}
-    raw_templates = merged.get("templates", {}) or {}
-    if isinstance(raw_templates, dict):
-        items = raw_templates.values()
-    else:
-        items = raw_templates
-    for tpl in items:
-        if not isinstance(tpl, dict):
-            continue
-        tpl_id = normalize_template_id(str(tpl.get("id") or tpl.get("label") or "template"))
-        templates[tpl_id] = {
-            "id": tpl_id,
-            "label": str(tpl.get("label") or tpl_id),
-            "content": str(tpl.get("content") or ""),
-        }
-    if "default" not in templates:
-        templates["default"] = deepcopy(DEFAULT_UI["templates"]["default"])
-    merged["templates"] = templates
-
-    groups = []
-    for g in merged.get("groups", []):
-        if not isinstance(g, dict):
-            continue
-        sender_mode = str(g.get("sender_mode", "default") or "default")
-        if sender_mode not in {"default", "custom"}:
-            sender_mode = "default"
-
-        html_mode = str(g.get("html_mode", "default") or "default")
-        if html_mode not in {"default", "custom"}:
-            html_mode = "default"
-
-        vehicles = g.get("vehicles", []) or []
-        normalized_vehicle_names = []
-        for v in vehicles:
-            if isinstance(v, dict):
-                name = extract_name(v)
-                if name:
-                    normalized_vehicle_names.append(name)
-            elif isinstance(v, str) and v.strip():
-                normalized_vehicle_names.append(v.strip())
-
-        groups.append({
-            "id": str(g.get("id") or uuid.uuid4()),
-            "name": str(g.get("name") or ""),
-            "recipient_name": str(g.get("recipient_name") or ""),
-            "recipient_company": str(g.get("recipient_company") or ""),
-            "recipient_email": str(g.get("recipient_email") or ""),
-            "recipient_street": str(g.get("recipient_street") or ""),
-            "recipient_zip": str(g.get("recipient_zip") or ""),
-            "recipient_city": str(g.get("recipient_city") or ""),
-            "vehicles": normalized_vehicle_names,
-            "grid_price_override": str(g.get("grid_price_override") or ""),
-            "sender_mode": sender_mode,
-            "custom_sender": {
-                "name": str((g.get("custom_sender") or {}).get("name") or ""),
-                "email": str((g.get("custom_sender") or {}).get("email") or ""),
-                "street": str((g.get("custom_sender") or {}).get("street") or ""),
-                "zip": str((g.get("custom_sender") or {}).get("zip") or ""),
-                "city": str((g.get("custom_sender") or {}).get("city") or ""),
-            },
-            "html_mode": html_mode,
-            "template_id": str(g.get("template_id") or "default"),
-        })
-    merged["groups"] = groups
-    return merged
-
-
 def parse_bool(value) -> bool:
     return str(value).lower() in {"1", "true", "on", "yes"}
 
@@ -294,13 +193,11 @@ def get_previous_month() -> tuple[int, int]:
 def extract_name(item) -> str:
     if isinstance(item, str):
         return item.strip()
-
     if isinstance(item, dict):
         for key in ("title", "name", "vehicle", "idTag", "uid", "displayName", "label"):
             value = item.get(key)
             if isinstance(value, str) and value.strip():
                 return value.strip()
-
     return ""
 
 
@@ -310,16 +207,10 @@ def is_card_name(name: str) -> bool:
 
 
 def normalize_vehicle_entry(item) -> dict:
-    if isinstance(item, dict):
-        name = extract_name(item)
-    else:
-        name = extract_name(str(item))
+    name = extract_name(item)
     if not name:
         return {"name": "", "kind": "vehicle"}
-    return {
-        "name": name,
-        "kind": "card" if is_card_name(name) else "vehicle",
-    }
+    return {"name": name, "kind": "card" if is_card_name(name) else "vehicle"}
 
 
 def collect_named_entries(obj) -> list[dict]:
@@ -329,14 +220,142 @@ def collect_named_entries(obj) -> list[dict]:
             norm = normalize_vehicle_entry(entry)
             if norm["name"]:
                 results.append(norm)
-            results.extend(collect_named_entries(entry))
     elif isinstance(obj, dict):
-        norm = normalize_vehicle_entry(obj)
-        if norm["name"]:
-            results.append(norm)
+        for key in ("title", "name", "vehicle", "idTag", "uid", "displayName", "label"):
+            value = obj.get(key)
+            if isinstance(value, str) and value.strip():
+                results.append(normalize_vehicle_entry(value))
+                break
         for value in obj.values():
-            results.extend(collect_named_entries(value))
+            if isinstance(value, (dict, list)):
+                results.extend(collect_named_entries(value))
     return results
+
+
+def normalize_ui_data(data: dict) -> dict:
+    merged = deep_merge(DEFAULT_UI, data or {})
+
+    merged["cached_vehicles"] = [normalize_vehicle_entry(v) for v in merged.get("cached_vehicles", [])]
+    merged["cached_vehicles"] = [v for v in merged["cached_vehicles"] if v.get("name")]
+
+    reporting = deep_merge(DEFAULT_UI["reporting"], merged.get("reporting", {}) or {})
+    if reporting.get("billing_mode_default") not in {"monthly", "quarterly", "halfyearly", "yearly"}:
+        reporting["billing_mode_default"] = "monthly"
+    reporting["default_template_id"] = normalize_template_id(str(reporting.get("default_template_id") or "default"))
+    reporting["default_email_body"] = str(reporting.get("default_email_body") or "")
+    merged["reporting"] = reporting
+
+    templates = {}
+    raw_templates = merged.get("templates", {}) or {}
+    items = raw_templates.values() if isinstance(raw_templates, dict) else raw_templates
+    for tpl in items:
+        if not isinstance(tpl, dict):
+            continue
+        tpl_id = normalize_template_id(str(tpl.get("id") or tpl.get("label") or "template"))
+        templates[tpl_id] = {
+            "id": tpl_id,
+            "label": str(tpl.get("label") or tpl_id),
+            "content": str(tpl.get("content") or ""),
+        }
+    if "default" not in templates:
+        templates["default"] = deepcopy(DEFAULT_UI["templates"]["default"])
+    if merged["reporting"]["default_template_id"] not in templates:
+        merged["reporting"]["default_template_id"] = "default"
+    merged["templates"] = templates
+
+    groups = []
+    for g in merged.get("groups", []):
+        if not isinstance(g, dict):
+            continue
+
+        vehicles = []
+        for v in g.get("vehicles", []) or []:
+            name = extract_name(v)
+            if name:
+                vehicles.append(name)
+
+        sender_mode = str(g.get("sender_mode", "default") or "default")
+        if sender_mode not in {"default", "custom"}:
+            sender_mode = "default"
+
+        html_mode = str(g.get("html_mode", "default") or "default")
+        if html_mode not in {"default", "custom"}:
+            html_mode = "default"
+
+        email_mode = str(g.get("email_mode", "default") or "default")
+        if email_mode not in {"default", "custom"}:
+            email_mode = "default"
+
+        billing_mode_scope = str(g.get("billing_mode_scope", "default") or "default")
+        if billing_mode_scope not in {"default", "custom"}:
+            billing_mode_scope = "default"
+
+        billing_mode_custom = str(g.get("billing_mode_custom", "") or "")
+        if billing_mode_custom not in {"monthly", "quarterly", "halfyearly", "yearly"}:
+            billing_mode_custom = merged["reporting"]["billing_mode_default"]
+
+        template_id = normalize_template_id(str(g.get("template_id") or "default"))
+        if template_id not in merged["templates"]:
+            template_id = merged["reporting"]["default_template_id"]
+
+        groups.append({
+            "id": str(g.get("id") or uuid.uuid4()),
+            "name": str(g.get("name") or ""),
+            "recipient_name": str(g.get("recipient_name") or ""),
+            "recipient_company": str(g.get("recipient_company") or ""),
+            "recipient_email": str(g.get("recipient_email") or ""),
+            "recipient_street": str(g.get("recipient_street") or ""),
+            "recipient_zip": str(g.get("recipient_zip") or ""),
+            "recipient_city": str(g.get("recipient_city") or ""),
+            "vehicles": vehicles,
+            "grid_price_override": str(g.get("grid_price_override") or ""),
+            "sender_mode": sender_mode,
+            "custom_sender": {
+                "name": str((g.get("custom_sender") or {}).get("name") or ""),
+                "email": str((g.get("custom_sender") or {}).get("email") or ""),
+                "street": str((g.get("custom_sender") or {}).get("street") or ""),
+                "zip": str((g.get("custom_sender") or {}).get("zip") or ""),
+                "city": str((g.get("custom_sender") or {}).get("city") or ""),
+            },
+            "html_mode": html_mode,
+            "template_id": template_id,
+            "email_mode": email_mode,
+            "custom_email_body": str(g.get("custom_email_body") or ""),
+            "billing_mode_scope": billing_mode_scope,
+            "billing_mode_custom": billing_mode_custom,
+        })
+    merged["groups"] = groups
+    return merged
+
+
+def load_ui_data() -> dict:
+    ensure_dirs()
+    data = normalize_ui_data(load_local_fallback())
+    try:
+        msg = subscribe.simple(topic_ui(), retained=True, timeout=2, **mqtt_connection_kwargs())
+        if msg and getattr(msg, "payload", None):
+            payload = msg.payload.decode("utf-8")
+            if payload:
+                mqtt_data = json.loads(payload)
+                data = normalize_ui_data(deep_merge(data, mqtt_data))
+    except Exception:
+        pass
+    return data
+
+
+def save_ui_data(data: dict) -> None:
+    data = normalize_ui_data(data)
+    save_local_fallback(data)
+    try:
+        publish.single(
+            topic_ui(),
+            payload=json.dumps(data, ensure_ascii=False),
+            retain=True,
+            qos=1,
+            **mqtt_connection_kwargs(),
+        )
+    except Exception:
+        pass
 
 
 def evcc_session(ui: dict) -> requests.Session:
@@ -375,9 +394,7 @@ def fetch_available_vehicles(ui: dict) -> list[dict]:
     state = response.json()
     if isinstance(state, dict):
         state_result = state.get("result", state)
-        vehicles_node = state_result.get("vehicles") if isinstance(state_result, dict) else None
-        if vehicles_node is not None:
-            collected.extend(collect_named_entries(vehicles_node))
+        collected.extend(collect_named_entries(state_result.get("vehicles", []) if isinstance(state_result, dict) else []))
 
     try:
         for item in fetch_sessions(ui):
@@ -389,9 +406,8 @@ def fetch_available_vehicles(ui: dict) -> list[dict]:
 
     dedup = {}
     for entry in collected:
-        if not entry.get("name"):
-            continue
-        dedup[entry["name"]] = entry
+        if entry.get("name"):
+            dedup[entry["name"]] = entry
     return sorted(dedup.values(), key=lambda x: x["name"].lower())
 
 
@@ -408,6 +424,61 @@ def find_group(ui: dict, group_id: str):
     return None
 
 
+def effective_sender(ui: dict, group: dict) -> dict:
+    if group.get("sender_mode") == "custom":
+        return group.get("custom_sender", {}) or {}
+    return ui.get("sender", {}) or {}
+
+
+def effective_template(ui: dict, group: dict) -> dict:
+    templates = ui.get("templates", {})
+    if group.get("html_mode") == "custom":
+        tid = str(group.get("template_id") or ui["reporting"]["default_template_id"])
+        return templates.get(tid) or templates.get(ui["reporting"]["default_template_id"]) or templates.get("default") or {}
+    tid = ui["reporting"]["default_template_id"]
+    return templates.get(tid) or templates.get("default") or {}
+
+
+def effective_email_body(ui: dict, group: dict) -> str:
+    if group.get("email_mode") == "custom":
+        return str(group.get("custom_email_body") or "")
+    return str(ui.get("reporting", {}).get("default_email_body") or "")
+
+
+def effective_billing_mode(ui: dict, group: dict) -> str:
+    if group.get("billing_mode_scope") == "custom":
+        mode = str(group.get("billing_mode_custom") or "")
+    else:
+        mode = str(ui.get("reporting", {}).get("billing_mode_default") or "monthly")
+    if mode not in {"monthly", "quarterly", "halfyearly", "yearly"}:
+        mode = "monthly"
+    return mode
+
+
+def period_for_mode(mode: str, year: int, month: int) -> tuple[pd.Timestamp, pd.Timestamp, str]:
+    if mode == "monthly":
+        start = pd.Timestamp(year=year, month=month, day=1)
+        end = start + pd.offsets.MonthBegin(1)
+        label = f"{year:04d}-{month:02d}"
+    elif mode == "quarterly":
+        q_start_month = ((month - 1) // 3) * 3 + 1
+        start = pd.Timestamp(year=year, month=q_start_month, day=1)
+        end = start + pd.offsets.MonthBegin(3)
+        q = ((q_start_month - 1) // 3) + 1
+        label = f"{year:04d} Q{q}"
+    elif mode == "halfyearly":
+        h_start_month = 1 if month <= 6 else 7
+        start = pd.Timestamp(year=year, month=h_start_month, day=1)
+        end = start + pd.offsets.MonthBegin(6)
+        h = 1 if h_start_month == 1 else 2
+        label = f"{year:04d} H{h}"
+    else:
+        start = pd.Timestamp(year=year, month=1, day=1)
+        end = pd.Timestamp(year=year + 1, month=1, day=1)
+        label = f"{year:04d}"
+    return start, end, label
+
+
 def build_report_dataframe(ui: dict, group: dict, year: int, month: int):
     sessions = fetch_sessions(ui)
     df = pd.DataFrame(sessions)
@@ -418,9 +489,12 @@ def build_report_dataframe(ui: dict, group: dict, year: int, month: int):
     if "chargedEnergy" not in df.columns:
         raise ValueError("Spalte 'chargedEnergy' fehlt.")
 
+    mode = effective_billing_mode(ui, group)
+    start, end, period_label = period_for_mode(mode, year, month)
+
     df["created"] = pd.to_datetime(df["created"], errors="coerce", utc=True).dt.tz_localize(None)
     df = df.dropna(subset=["created"])
-    df = df[(df["created"].dt.year == year) & (df["created"].dt.month == month)]
+    df = df[(df["created"] >= start) & (df["created"] < end)]
 
     if "vehicle" in df.columns and group.get("vehicles"):
         df["vehicle"] = df["vehicle"].fillna("").astype(str)
@@ -442,29 +516,16 @@ def build_report_dataframe(ui: dict, group: dict, year: int, month: int):
 
     df["price"] = (df["chargedEnergy"] * grid_price).round(2)
     df = df.sort_values("created", ascending=True)
-    return df, grid_price
-
-
-def effective_sender(ui: dict, group: dict) -> dict:
-    if group.get("sender_mode") == "custom":
-        return group.get("custom_sender", {}) or {}
-    return ui.get("sender", {}) or {}
-
-
-def effective_template(ui: dict, group: dict) -> dict:
-    templates = ui.get("templates", {})
-    if group.get("sender_mode") == "custom" and group.get("html_mode") == "custom":
-        template_id = str(group.get("template_id") or "default")
-        return templates.get(template_id) or templates.get("default") or {}
-    return templates.get("default") or {}
+    return df, grid_price, mode, period_label
 
 
 def write_txt_report(ui: dict, group: dict, year: int, month: int) -> Path:
-    df, grid_price = build_report_dataframe(ui, group, year, month)
+    df, grid_price, mode, period_label = build_report_dataframe(ui, group, year, month)
     sender = effective_sender(ui, group)
     template = effective_template(ui, group)
+    email_body = effective_email_body(ui, group)
     output_name = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in group["name"]).strip("_") or "gruppe"
-    output_file = REPORT_DIR / f"evcc_report_{year:04d}-{month:02d}_{output_name}.txt"
+    output_file = REPORT_DIR / f"evcc_report_{period_label.replace(' ', '_')}_{output_name}.txt"
 
     lines = [
         "EVCC Abrechnung",
@@ -477,9 +538,14 @@ def write_txt_report(ui: dict, group: dict, year: int, month: int) -> Path:
         "",
         f"Absender-Modus: {'Gruppenbezogen' if group.get('sender_mode') == 'custom' else 'Standard'}",
         f"Absender: {sender.get('name', '')}",
-        f"Template: {template.get('label', 'Standard HTML')}",
+        f"HTML: {template.get('label', 'Standard HTML')}",
+        f"E-Mail-Text-Modus: {'Custom' if group.get('email_mode') == 'custom' else 'Standard'}",
+        f"Abrechnungsmodus: {mode}",
+        f"Periode: {period_label}",
         "",
-        f"Monat: {year:04d}-{month:02d}",
+        "E-Mail-Inhalt:",
+        email_body,
+        "",
         f"Fahrzeuge: {', '.join(group.get('vehicles', [])) if group.get('vehicles') else 'Alle'}",
         f"Netzstrompreis: {grid_price:.2f} €/kWh",
         "",
@@ -488,7 +554,9 @@ def write_txt_report(ui: dict, group: dict, year: int, month: int) -> Path:
     ]
     for _, row in df.iterrows():
         created_str = row["created"].strftime("%Y-%m-%d %H:%M")
-        lines.append(f"{created_str} | {row.get('vehicle','')} | {float(row.get('chargedEnergy',0)):.2f} kWh | {float(row.get('price',0)):.2f} €")
+        lines.append(
+            f"{created_str} | {row.get('vehicle','')} | {float(row.get('chargedEnergy',0)):.2f} kWh | {float(row.get('price',0)):.2f} €"
+        )
 
     lines.extend([
         "",
@@ -551,6 +619,15 @@ def settings_page():
         except ValueError:
             ui["reporting"]["grid_price"] = 0.0
 
+        ui["reporting"]["default_template_id"] = normalize_template_id(request.form.get("default_template_id", "default"))
+        if ui["reporting"]["default_template_id"] not in ui["templates"]:
+            ui["reporting"]["default_template_id"] = "default"
+        ui["reporting"]["default_email_body"] = request.form.get("default_email_body", "")
+        billing_mode_default = request.form.get("billing_mode_default", "monthly").strip()
+        if billing_mode_default not in {"monthly", "quarterly", "halfyearly", "yearly"}:
+            billing_mode_default = "monthly"
+        ui["reporting"]["billing_mode_default"] = billing_mode_default
+
         ui["scheduler"]["enabled"] = parse_bool(request.form.get("scheduler_enabled"))
         try:
             ui["scheduler"]["day_of_month"] = int(request.form.get("scheduler_day_of_month", "1").strip())
@@ -597,8 +674,28 @@ def groups_page():
 
         gid = request.form.get("group_id", "").strip() or str(uuid.uuid4())
         sender_mode = request.form.get("sender_mode", "default").strip()
+        if sender_mode not in {"default", "custom"}:
+            sender_mode = "default"
+
         html_mode = request.form.get("html_mode", "default").strip()
-        template_id = request.form.get("template_id", "default").strip() or "default"
+        if html_mode not in {"default", "custom"}:
+            html_mode = "default"
+
+        email_mode = request.form.get("email_mode", "default").strip()
+        if email_mode not in {"default", "custom"}:
+            email_mode = "default"
+
+        billing_mode_scope = request.form.get("billing_mode_scope", "default").strip()
+        if billing_mode_scope not in {"default", "custom"}:
+            billing_mode_scope = "default"
+
+        billing_mode_custom = request.form.get("billing_mode_custom", ui["reporting"]["billing_mode_default"]).strip()
+        if billing_mode_custom not in {"monthly", "quarterly", "halfyearly", "yearly"}:
+            billing_mode_custom = ui["reporting"]["billing_mode_default"]
+
+        template_id = normalize_template_id(request.form.get("template_id", ui["reporting"]["default_template_id"]))
+        if template_id not in ui["templates"]:
+            template_id = ui["reporting"]["default_template_id"]
 
         group_data = {
             "id": gid,
@@ -621,6 +718,10 @@ def groups_page():
             },
             "html_mode": html_mode,
             "template_id": template_id,
+            "email_mode": email_mode,
+            "custom_email_body": request.form.get("custom_email_body", ""),
+            "billing_mode_scope": billing_mode_scope,
+            "billing_mode_custom": billing_mode_custom,
         }
 
         if not group_data["name"]:
@@ -655,7 +756,9 @@ def templates_page():
                 ui["templates"].pop(tid, None)
                 for group in ui.get("groups", []):
                     if group.get("template_id") == tid:
-                        group["template_id"] = "default"
+                        group["template_id"] = ui["reporting"]["default_template_id"]
+                if ui["reporting"]["default_template_id"] == tid:
+                    ui["reporting"]["default_template_id"] = "default"
                 save_ui_data(ui)
                 flash("Template gelöscht.", "success")
             return redirect(f"{request.headers.get('X-Ingress-Path','')}/templates")
@@ -664,8 +767,11 @@ def templates_page():
         tid = normalize_template_id(tid)
         label = request.form.get("template_label", "").strip() or tid
         content = request.form.get("template_content", "").strip()
+        set_default = parse_bool(request.form.get("template_default"))
 
         ui["templates"][tid] = {"id": tid, "label": label, "content": content}
+        if set_default:
+            ui["reporting"]["default_template_id"] = tid
         save_ui_data(ui)
         flash("Template gespeichert.", "success")
         return redirect(f"{request.headers.get('X-Ingress-Path','')}/templates")

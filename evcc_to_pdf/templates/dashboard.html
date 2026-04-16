@@ -8,6 +8,8 @@
     <li><strong>Gruppen:</strong> {{ group_count }}</li>
     <li><strong>Scheduler:</strong> {{ "aktiv" if ui.scheduler.enabled else "inaktiv" }}</li>
     <li><strong>EVCC URL:</strong> {{ ui.evcc.url or "nicht gesetzt" }}</li>
+    <li><strong>Standard-Abrechnung:</strong> {{ ui.reporting.billing_mode_default }}</li>
+    <li><strong>Standard-Template:</strong> {{ ui.reporting.default_template_id }}</li>
   </ul>
   <form method="post" action="{{ ingress_path }}/refresh_vehicles">
     <button type="submit">Fahrzeuge aus EVCC laden</button>
