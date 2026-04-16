@@ -28,7 +28,7 @@ REPORT_DIR = Path("/share/evcc-pdfs")
 OPTIONS_FILE = Path("/data/options.json")
 DEFAULT_TEMPLATE_KEY = "default"
 DEFAULT_TEMPLATE_LABEL = "Standard HTML"
-APP_VERSION = "0.6.1"
+APP_VERSION = "0.6.3"
 
 DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
 <html lang="de">
@@ -565,6 +565,13 @@ def grid_price_for_group(settings, group):
     override = str(group.get("grid_price_override","")).strip()
     return parse_float(override, parse_float(settings["reporting"].get("grid_price"), 0.0)) if override else parse_float(settings["reporting"].get("grid_price"), 0.0)
 
+def format_de_number(value, decimals=2):
+    try:
+        return f"{float(value):,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except Exception:
+        return f"{0:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 def generate_rows_and_summary(settings, group, mode=None, manual_year=None, manual_month=None):
     sessions = fetch_sessions(settings)
     df = pd.DataFrame(sessions)
@@ -623,7 +630,6 @@ def generate_rows_and_summary(settings, group, mode=None, manual_year=None, manu
     if selected:
         df = df[df["vehicle_display"].isin(selected)]
 
-    # Exklusives Ende verhindert, dass Sessions aus dem Folgemonat mitkommen.
     df = df[(df["created"] >= start) & (df["created"] < next_period_start)]
     if df.empty:
         raise ValueError("Keine Ladevorgänge für den gewählten Zeitraum gefunden.")
@@ -641,19 +647,44 @@ def generate_rows_and_summary(settings, group, mode=None, manual_year=None, manu
     df = df.sort_values("created", ascending=True)
 
     rows_html = []
+    session_rows = []
     for _, row in df.iterrows():
         dt = row["created"]
         enddt = row[end_col] if pd.notna(row[end_col]) else row["created"]
+        energy = float(row.get("chargedEnergy", 0) or 0)
+        price = float(row.get("price", 0) or 0)
+        vehicle = str(row.get("vehicle_display", ""))
+        row_data = {
+            "date": dt.strftime('%d.%m.%Y'),
+            "start_time": dt.strftime('%H:%M'),
+            "end_time": enddt.strftime('%H:%M'),
+            "vehicle": vehicle,
+            "energy_kwh": energy,
+            "energy_kwh_formatted": format_de_number(energy),
+            "cost": price,
+            "cost_formatted": format_de_number(price),
+            "cost_eur": f"{format_de_number(price)} €",
+        }
+        session_rows.append(row_data)
         rows_html.append(
-            f"<tr><td>{dt.strftime('%d.%m.%Y')}</td><td>{dt.strftime('%H:%M')}</td><td>{enddt.strftime('%H:%M')}</td><td>{str(row.get('vehicle_display',''))}</td><td>{float(row.get('chargedEnergy',0)):.2f}</td><td>{float(row.get('price',0)):.2f}</td></tr>"
+            f"<tr><td>{row_data['date']}</td><td>{row_data['start_time']}</td><td>{row_data['end_time']}</td><td>{vehicle}</td><td>{row_data['energy_kwh_formatted']}</td><td>{row_data['cost_eur']}</td></tr>"
         )
 
+    total_energy = float(df['chargedEnergy'].sum())
+    total_cost = float(df['price'].sum())
     return {
         "rows_html": "\n".join(rows_html),
-        "total_energy_kwh": f"{df['chargedEnergy'].sum():.2f} kWh",
-        "total_cost_eur": f"{df['price'].sum():.2f} €",
+        "sessions": session_rows,
+        "total_energy": total_energy,
+        "total_cost": total_cost,
+        "total_energy_kwh": f"{format_de_number(total_energy)} kWh",
+        "total_cost_eur": f"{format_de_number(total_cost)} €",
+        "total_energy_formatted": format_de_number(total_energy),
+        "total_cost_formatted": format_de_number(total_cost),
         "period_start": start,
         "period_end": end,
+        "period_start_str": start.strftime('%d.%m.%Y'),
+        "period_end_str": end.strftime('%d.%m.%Y'),
         "billing_mode": mode,
     }
 
@@ -663,17 +694,45 @@ def render_html(settings, group, mode=None, manual_year=None, manual_month=None)
     recipient = {"name": group.get("recipient_name",""), "company": group.get("recipient_company",""), "email": group.get("recipient_email",""), "street": group.get("recipient_street",""), "zip": group.get("recipient_zip",""), "city": group.get("recipient_city","")}
     bank = effective_bank(settings, group)
     email_body = render_shortcuts(effective_email_body(settings, group), summary)
-    tpl = settings["templates"][effective_template_key(settings, group)]["content"]
-    html = Template(tpl).render(
-        sender=sender, recipient=recipient, bank=bank,
-        invoice_date=datetime.today().strftime("%d.%m.%Y"),
-        billing_mode_label=billing_mode_label(summary["billing_mode"]),
-        period_label=period_label(summary["period_start"], summary["period_end"]),
-        rows_html=summary["rows_html"],
-        total_energy_kwh=summary["total_energy_kwh"],
-        total_cost_eur=summary["total_cost_eur"],
-        email_body=email_body,
-    )
+    tpl_key = effective_template_key(settings, group)
+    tpl = settings["templates"][tpl_key]["content"]
+    billing_label = billing_mode_label(summary["billing_mode"])
+    period_lbl = period_label(summary["period_start"], summary["period_end"])
+    context = {
+        "sender": sender,
+        "recipient": recipient,
+        "bank": bank,
+        "invoice_date": datetime.today().strftime("%d.%m.%Y"),
+        "billing_mode_label": billing_label,
+        "period_label": period_lbl,
+        "period_start": summary["period_start_str"],
+        "period_end": summary["period_end_str"],
+        "rows_html": summary["rows_html"],
+        "sessions": summary["sessions"],
+        "total_energy_kwh": summary["total_energy_kwh"],
+        "total_cost_eur": summary["total_cost_eur"],
+        "total_energy": summary["total_energy_formatted"],
+        "total_cost": summary["total_cost_formatted"],
+        "email_body": email_body,
+        "sender_name": sender.get("name", ""),
+        "sender_street": sender.get("street", ""),
+        "sender_zip": sender.get("zip", ""),
+        "sender_city": sender.get("city", ""),
+        "sender_email": sender.get("email", ""),
+        "recipient_name": recipient.get("name", ""),
+        "recipient_company": recipient.get("company", ""),
+        "recipient_street": recipient.get("street", ""),
+        "recipient_zip": recipient.get("zip", ""),
+        "recipient_city": recipient.get("city", ""),
+        "recipient_email": recipient.get("email", ""),
+        "bank_recipient": bank.get("recipient", ""),
+        "bank_iban": bank.get("iban", ""),
+        "bank_bic": bank.get("bic", ""),
+        "bank_institute": bank.get("institute", ""),
+        "template_key": tpl_key,
+        "template_label": settings["templates"][tpl_key].get("label", tpl_key),
+    }
+    html = Template(tpl).render(**context)
     return html, summary
 
 def generate_pdf(settings, group, mode=None, manual_year=None, manual_month=None):

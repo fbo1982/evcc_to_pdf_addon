@@ -7,9 +7,9 @@
       {% for key, tpl in settings.templates.items() %}
       <div class="group-item">
         <div>
-          <strong>{{ tpl.label if key != settings.default_template_key else "Standard HTML" }}</strong><br>
+          <strong>{{ tpl.label }}{% if key == settings.default_template_key %} (Default){% endif %}</strong><br>
           <span class="muted">{{ key }}</span>
-          {% if key == settings.default_template_key %}<div class="chip">Default</div>{% endif %}
+          
         </div>
         <div class="group-actions">
           <a class="button secondary" href="{{ ingress_path }}/templates?edit={{ key }}">Bearbeiten</a>

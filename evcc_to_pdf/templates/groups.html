@@ -76,7 +76,7 @@
 
       <label><span>HTML</span>
         <select name="html_mode" id="html_mode" onchange="toggleSection('html_mode','custom','template_block')">
-          <option value="default" {% if not edit_group or edit_group.html_mode == 'default' %}selected{% endif %}>Standard HTML</option>
+          <option value="default" {% if not edit_group or edit_group.html_mode == 'default' %}selected{% endif %}>{{ tpl.label }} (Default)</option>
           <option value="custom" {% if edit_group and edit_group.html_mode == 'custom' %}selected{% endif %}>Eigenes HTML</option>
         </select>
       </label>
@@ -85,7 +85,7 @@
           <select name="selected_template_key">
             {% for key, tpl in settings.templates.items() %}
               {% if key == settings.default_template_key %}
-                <option value="{{ key }}" {% if edit_group and edit_group.selected_template_key == key %}selected{% endif %}>Standard HTML</option>
+                <option value="{{ key }}" {% if edit_group and edit_group.selected_template_key == key %}selected{% endif %}>{{ tpl.label }} (Default)</option>
               {% else %}
                 <option value="{{ key }}" {% if edit_group and edit_group.selected_template_key == key %}selected{% endif %}>{{ tpl.label }}</option>
               {% endif %}
