@@ -24,6 +24,14 @@
               <input type="hidden" name="group_id" value="{{ group.id }}">
               <button type="submit" class="danger">Löschen</button>
             </form>
+            <form method="post" action="{{ ingress_path }}/groups" class="inline-toggle">
+              <input type="hidden" name="form_action" value="toggle_active">
+              <input type="hidden" name="group_id" value="{{ group.id }}">
+              <label class="checkbox">
+                <input type="checkbox" name="active" value="1" {% if group.active %}checked{% endif %} onchange="this.form.submit()">
+                <span>Aktiv</span>
+              </label>
+            </form>
           </div>
         </div>
       {% endfor %}
@@ -38,6 +46,7 @@
     <form method="post" action="{{ ingress_path }}/groups" class="stack">
       <input type="hidden" name="group_id" value="{{ edit_group.id if edit_group else '' }}">
 
+      <label class="checkbox"><input type="checkbox" name="active" value="1" {% if edit_group and edit_group.active %}checked{% endif %}><span>Aktiv</span></label>
       <label><span>Gruppenname</span><input type="text" name="name" value="{{ edit_group.name if edit_group else '' }}" required></label>
       <label><span>Empfängername</span><input type="text" name="recipient_name" value="{{ edit_group.recipient_name if edit_group else '' }}"></label>
       <label><span>Firma</span><input type="text" name="recipient_company" value="{{ edit_group.recipient_company if edit_group else '' }}"></label>
@@ -53,7 +62,6 @@
           <option value="custom" {% if edit_group and edit_group.sender_mode == 'custom' %}selected{% endif %}>Gruppenbezogen</option>
         </select>
       </label>
-
       <section id="custom-sender-section" class="subcard">
         <h3>Gruppenbezogener Absender</h3>
         <label><span>Name</span><input type="text" name="custom_sender_name" value="{{ edit_group.custom_sender.name if edit_group else '' }}"></label>
@@ -66,7 +74,7 @@
       <label><span>HTML</span>
         <select name="template_choice">
           <option value="default" {% if not edit_group or edit_group.template_choice == 'default' %}selected{% endif %}>Standard HTML</option>
-          {% for key,tpl in settings.templates.items() %}
+          {% for key, tpl in settings.templates.items() %}
             {% if key != settings.reporting.default_template_key %}
             <option value="{{ key }}" {% if edit_group and edit_group.template_choice == key %}selected{% endif %}>{{ tpl.label }}</option>
             {% endif %}
@@ -80,7 +88,6 @@
           <option value="custom" {% if edit_group and edit_group.email_body_mode == 'custom' %}selected{% endif %}>Gruppenbezogen</option>
         </select>
       </label>
-
       <section id="custom-email-section" class="subcard">
         <h3>Gruppenbezogener E-Mail-Inhalt</h3>
         <label><span>E-Mail-Inhalt</span><textarea name="custom_email_body" rows="6">{{ edit_group.custom_email_body if edit_group else '' }}</textarea></label>
@@ -92,13 +99,12 @@
           <option value="custom" {% if edit_group and edit_group.billing_mode_source == 'custom' %}selected{% endif %}>Gruppenbezogen</option>
         </select>
       </label>
-
       <section id="custom-billing-section" class="subcard">
         <h3>Gruppenbezogener Abrechnungsmodus</h3>
         <label><span>Abrechnungsmodus</span>
           <select name="custom_billing_mode">
-            {% for val,label in [('monthly','Monatlich'),('quarterly','Quartal'),('semiannual','Halbjährlich'),('annual','Jährlich')] %}
-            <option value="{{ val }}" {% if edit_group and edit_group.custom_billing_mode == val %}selected{% elif (not edit_group or not edit_group.custom_billing_mode) and settings.reporting.billing_mode == val %}selected{% endif %}>{{ label }}</option>
+            {% for val, label in [('monthly','Monatlich'),('quarterly','Quartal'),('semiannual','Halbjährlich'),('annual','Jährlich')] %}
+            <option value="{{ val }}" {% if edit_group and edit_group.custom_billing_mode == val %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </label>
@@ -126,24 +132,19 @@ function toggleSection(selectId, sectionId) {
   if (!select || !section) return;
   section.style.display = select.value === 'custom' ? 'block' : 'none';
 }
-
 function initGroupFormToggles() {
   toggleSection('sender_mode', 'custom-sender-section');
   toggleSection('email_body_mode', 'custom-email-section');
   toggleSection('billing_mode_source', 'custom-billing-section');
-
   ['sender_mode', 'email_body_mode', 'billing_mode_source'].forEach(function(id) {
     const el = document.getElementById(id);
-    if (el) {
-      el.addEventListener('change', function() {
-        if (id === 'sender_mode') toggleSection('sender_mode', 'custom-sender-section');
-        if (id === 'email_body_mode') toggleSection('email_body_mode', 'custom-email-section');
-        if (id === 'billing_mode_source') toggleSection('billing_mode_source', 'custom-billing-section');
-      });
-    }
+    if (el) el.addEventListener('change', function() {
+      if (id === 'sender_mode') toggleSection('sender_mode', 'custom-sender-section');
+      if (id === 'email_body_mode') toggleSection('email_body_mode', 'custom-email-section');
+      if (id === 'billing_mode_source') toggleSection('billing_mode_source', 'custom-billing-section');
+    });
   });
 }
-
 document.addEventListener('DOMContentLoaded', initGroupFormToggles);
 </script>
 {% endblock %}

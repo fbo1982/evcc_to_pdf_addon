@@ -1,8 +1,7 @@
-
 {% extends "layout.html" %}
 {% block content %}
 <section class="card">
-  <h2>Testbericht erzeugen</h2>
+  <h2>Testbericht</h2>
   {% if not settings.groups %}
     <p>Bitte zuerst mindestens eine Gruppe anlegen.</p>
   {% else %}
@@ -16,15 +15,21 @@
       </label>
       <fieldset>
         <legend>Zeitraum</legend>
-        <label class="checkbox"><input type="radio" name="mode" value="previous_month" checked><span>Vormonat</span></label>
+        <label class="checkbox"><input type="radio" name="mode" value="previous_period" checked><span>Letzter vollständiger Zeitraum</span></label>
         <label class="checkbox"><input type="radio" name="mode" value="manual"><span>Manuell</span></label>
         <div class="form-grid">
           <label><span>Jahr</span><select name="year">{% for year in years %}<option value="{{ year }}">{{ year }}</option>{% endfor %}</select></label>
           <label><span>Monat</span><select name="month">{% for month in months %}<option value="{{ month }}">{{ "%02d"|format(month) }}</option>{% endfor %}</select></label>
         </div>
       </fieldset>
-      <div class="actions"><button type="submit">TXT-Testbericht erzeugen</button></div>
+      <div class="actions">
+        <button type="submit" name="action" value="generate">PDF erzeugen</button>
+        <button type="submit" name="action" value="send">PDF erzeugen und versenden</button>
+      </div>
     </form>
+  {% endif %}
+  {% if generated_pdf %}
+    <p class="muted">Zuletzt erzeugtes PDF: <code>{{ generated_pdf }}</code></p>
   {% endif %}
 </section>
 {% endblock %}

@@ -1,4 +1,3 @@
-
 {% extends "layout.html" %}
 {% block content %}
 <div class="grid two-col">
@@ -9,14 +8,14 @@
         <div>
           <strong>{{ tpl.label }}</strong><br>
           <span class="muted">{{ key }}</span>
-          {% if settings.reporting.default_template_key == key %}<br><span class="chip">Default</span>{% endif %}
+          {% if settings.reporting.default_template_key == key %}<br><span class="chip">Standard HTML</span>{% endif %}
         </div>
         <div class="group-actions">
           <a class="button secondary" href="{{ ingress_path }}/templates?edit={{ key }}">Bearbeiten</a>
           <form method="post" action="{{ ingress_path }}/templates">
             <input type="hidden" name="action" value="set_default">
             <input type="hidden" name="template_key" value="{{ key }}">
-            <button type="submit" class="secondary">Als Default</button>
+            <button type="submit" class="secondary">Als Standard</button>
           </form>
           {% if settings.reporting.default_template_key != key %}
           <form method="post" action="{{ ingress_path }}/templates" onsubmit="return confirm('Template löschen?')">
@@ -33,17 +32,15 @@
   <section class="card">
     <h2>{{ "Template bearbeiten" if edit_template else "Neues Template" }}</h2>
     <form method="post" action="{{ ingress_path }}/templates" enctype="multipart/form-data" class="stack">
-      <input type="hidden" name="action" value="{{ "update" if edit_template else "create" }}">
-      <input type="hidden" name="original_template_key" value="{{ edit_key if edit_template else "" }}">
-      <label><span>Template Key</span><input type="text" name="template_key" value="{{ edit_key if edit_template else "" }}"></label>
-      <label><span>Bezeichnung</span><input type="text" name="template_label" value="{{ edit_template.label if edit_template else "" }}"></label>
-
+      <input type="hidden" name="action" value="{{ 'update' if edit_template else 'create' }}">
+      <input type="hidden" name="original_template_key" value="{{ edit_key if edit_template else '' }}">
+      <label><span>Template Key</span><input type="text" name="template_key" value="{{ edit_key if edit_template else '' }}"></label>
+      <label><span>Bezeichnung</span><input type="text" name="template_label" value="{{ edit_template.label if edit_template else '' }}"></label>
       <label class="dropbox">
         <span>HTML-Datei hineinziehen oder auswählen</span>
         <input type="file" name="template_file" accept=".html,.htm,text/html">
       </label>
-
-      <label><span>Oder HTML direkt einfügen</span><textarea name="template_content" rows="14"></textarea></label>
+      <label><span>Oder HTML direkt einfügen</span><textarea name="template_content" rows="14">{{ edit_template.content if edit_template else '' }}</textarea></label>
       <div class="actions"><button type="submit">Template speichern</button></div>
     </form>
   </section>
