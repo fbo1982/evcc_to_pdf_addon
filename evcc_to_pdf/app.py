@@ -28,7 +28,7 @@ REPORT_DIR = Path("/share/evcc-pdfs")
 OPTIONS_FILE = Path("/data/options.json")
 DEFAULT_TEMPLATE_KEY = "default"
 DEFAULT_TEMPLATE_LABEL = "Standard HTML"
-APP_VERSION = "0.5.7"
+APP_VERSION = "0.5.8"
 
 DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
 <html lang="de">
@@ -539,43 +539,85 @@ def grid_price_for_group(settings, group):
 def generate_rows_and_summary(settings, group, mode=None, manual_year=None, manual_month=None):
     sessions = fetch_sessions(settings)
     df = pd.DataFrame(sessions)
-    if df.empty: raise ValueError("Keine Sessions gefunden.")
-    if "created" not in df.columns or "chargedEnergy" not in df.columns: raise ValueError("EVCC Sessions enthalten nicht die benötigten Felder.")
-    df["created"] = pd.to_datetime(df["created"], errors="coerce", utc=True).dt.tz_localize(None)
+    if df.empty:
+        raise ValueError("Keine Sessions gefunden.")
+    if "created" not in df.columns or "chargedEnergy" not in df.columns:
+        raise ValueError("EVCC Sessions enthalten nicht die benötigten Felder.")
+
+    def normalize_vehicle_name(value):
+        if isinstance(value, dict):
+            name = (
+                value.get("title")
+                or value.get("name")
+                or value.get("vehicle")
+                or value.get("id")
+                or ""
+            )
+            return str(name).strip()
+        return str(value or "").strip()
+
+    def parse_local_datetime(value):
+        ts = pd.to_datetime(value, errors="coerce")
+        if pd.isna(ts):
+            return pd.NaT
+        try:
+            if getattr(ts, "tzinfo", None) is not None:
+                return ts.tz_convert(None)
+        except Exception:
+            pass
+        try:
+            if getattr(ts, "tzinfo", None) is not None:
+                return ts.tz_localize(None)
+        except Exception:
+            pass
+        return ts
+
+    df["created"] = df["created"].apply(parse_local_datetime)
     df = df.dropna(subset=["created"])
+
+    if "vehicle" in df.columns:
+        df["vehicle_display"] = df["vehicle"].apply(normalize_vehicle_name)
+    else:
+        df["vehicle_display"] = ""
 
     if manual_year and manual_month:
         start = datetime(int(manual_year), int(manual_month), 1)
-        end = datetime(int(manual_year), 12, 31) if int(manual_month) == 12 else datetime(int(manual_year), int(manual_month)+1, 1) - timedelta(days=1)
+        next_period_start = datetime(int(manual_year) + 1, 1, 1) if int(manual_month) == 12 else datetime(int(manual_year), int(manual_month) + 1, 1)
+        end = next_period_start - timedelta(days=1)
         mode = "monthly"
     else:
         mode = mode or effective_billing_mode(settings, group)
         start, end = period_for_mode(datetime.today(), mode)
+        next_period_start = end + timedelta(days=1)
 
-    selected = set([str(v) for v in group.get("vehicles", [])])
-    if selected and "vehicle" in df.columns:
-        df["vehicle"] = df["vehicle"].fillna("").astype(str)
-        df = df[df["vehicle"].isin(selected)]
+    selected = {str(v).strip() for v in group.get("vehicles", []) if str(v).strip()}
+    if selected:
+        df = df[df["vehicle_display"].isin(selected)]
 
-    df = df[(df["created"] >= start) & (df["created"] <= end + timedelta(days=1) - timedelta(seconds=1))]
-    if df.empty: raise ValueError("Keine Ladevorgänge für den gewählten Zeitraum gefunden.")
+    # Exklusives Ende verhindert, dass Sessions aus dem Folgemonat mitkommen.
+    df = df[(df["created"] >= start) & (df["created"] < next_period_start)]
+    if df.empty:
+        raise ValueError("Keine Ladevorgänge für den gewählten Zeitraum gefunden.")
 
     df["chargedEnergy"] = pd.to_numeric(df["chargedEnergy"], errors="coerce").fillna(0)
     df["price"] = (df["chargedEnergy"] * grid_price_for_group(settings, group)).round(2)
 
-    end_col = next((c for c in ("finished","updated","end") if c in df.columns), None)
+    end_col = next((c for c in ("finished", "updated", "end") if c in df.columns), None)
     if end_col:
-        df[end_col] = pd.to_datetime(df[end_col], errors="coerce", utc=True).dt.tz_localize(None)
+        df[end_col] = df[end_col].apply(parse_local_datetime)
     else:
         df["__end"] = df["created"]
         end_col = "__end"
+
     df = df.sort_values("created", ascending=True)
 
     rows_html = []
     for _, row in df.iterrows():
         dt = row["created"]
         enddt = row[end_col] if pd.notna(row[end_col]) else row["created"]
-        rows_html.append(f"<tr><td>{dt.strftime('%d.%m.%Y')}</td><td>{dt.strftime('%H:%M')}</td><td>{enddt.strftime('%H:%M')}</td><td>{str(row.get('vehicle',''))}</td><td>{float(row.get('chargedEnergy',0)):.2f}</td><td>{float(row.get('price',0)):.2f}</td></tr>")
+        rows_html.append(
+            f"<tr><td>{dt.strftime('%d.%m.%Y')}</td><td>{dt.strftime('%H:%M')}</td><td>{enddt.strftime('%H:%M')}</td><td>{str(row.get('vehicle_display',''))}</td><td>{float(row.get('chargedEnergy',0)):.2f}</td><td>{float(row.get('price',0)):.2f}</td></tr>"
+        )
 
     return {
         "rows_html": "\n".join(rows_html),
@@ -828,21 +870,30 @@ def report_page():
     settings = load_settings()
     generated_file = None
     preview_html = None
+
+    today = datetime.today()
+    selected_mode = "manual"
+    selected_year = str(today.year)
+    selected_month = f"{today.month:02d}"
+    selected_group_id = settings["groups"][0]["id"] if settings.get("groups") else ""
+
     if request.method == "POST":
-        group_id = request.form.get("group_id","").strip()
+        selected_group_id = request.form.get("group_id","").strip()
         action = request.form.get("action","pdf")
-        mode = request.form.get("mode","auto").strip()
-        manual_year = request.form.get("year","").strip() or None
-        manual_month = request.form.get("month","").strip() or None
-        group = find_group(settings, group_id)
+        selected_mode = request.form.get("mode","manual").strip() or "manual"
+        selected_year = request.form.get("year","").strip() or str(today.year)
+        selected_month = request.form.get("month","").strip() or f"{today.month:02d}"
+        group = find_group(settings, selected_group_id)
         if not group:
             flash("Gruppe nicht gefunden.", "error")
             return redirect(f"{get_ingress_path()}/report")
         try:
+            manual_year = selected_year if selected_mode == "manual" else None
+            manual_month = selected_month if selected_mode == "manual" else None
             if action == "preview":
-                preview_html, _ = render_html(settings, group, manual_year=manual_year if mode == "manual" else None, manual_month=manual_month if mode == "manual" else None)
+                preview_html, _ = render_html(settings, group, manual_year=manual_year, manual_month=manual_month)
             else:
-                pdf_path, summary = generate_pdf(settings, group, manual_year=manual_year if mode == "manual" else None, manual_month=manual_month if mode == "manual" else None)
+                pdf_path, summary = generate_pdf(settings, group, manual_year=manual_year, manual_month=manual_month)
                 generated_file = pdf_path
                 flash(f"PDF erzeugt: {pdf_path.name}", "success")
                 if action == "send":
@@ -850,10 +901,22 @@ def report_page():
                     flash("E-Mail versendet.", "success")
         except Exception as err:
             flash(f"Bericht konnte nicht verarbeitet werden: {err}", "error")
-    current_year = datetime.today().year
+
+    current_year = today.year
     years = list(range(current_year - 3, current_year + 2))
     months = list(range(1,13))
-    return render_template("report.html", settings=settings, years=years, months=months, generated_file=generated_file, preview_html=preview_html)
+    return render_template(
+        "report.html",
+        settings=settings,
+        years=years,
+        months=months,
+        generated_file=generated_file,
+        preview_html=preview_html,
+        selected_mode=selected_mode,
+        selected_year=selected_year,
+        selected_month=selected_month,
+        selected_group_id=selected_group_id,
+    )
 
 if __name__ == "__main__":
     ensure_dirs()

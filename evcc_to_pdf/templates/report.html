@@ -9,23 +9,23 @@
       <label><span>Gruppe</span>
         <select name="group_id">
           {% for g in settings.groups %}
-          <option value="{{ g.id }}">{{ g.name }}</option>
+          <option value="{{ g.id }}" {% if g.id == selected_group_id %}selected{% endif %}>{{ g.name }}</option>
           {% endfor %}
         </select>
       </label>
 
       <label><span>Zeitraum</span>
         <select name="mode">
-          <option value="auto">Automatisch nach Modus</option>
-          <option value="manual">Manuell Monat</option>
+          <option value="auto" {% if selected_mode == "auto" %}selected{% endif %}>Automatisch nach Modus</option>
+          <option value="manual" {% if selected_mode == "manual" %}selected{% endif %}>Manuell Monat</option>
         </select>
       </label>
       <div class="form-grid">
         <label><span>Jahr</span>
-          <select name="year">{% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}</select>
+          <select name="year">{% for y in years %}<option value="{{ y }}" {% if selected_year == (y|string) %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
         </label>
         <label><span>Monat</span>
-          <select name="month">{% for m in months %}<option value="{{ m }}">{{ "%02d"|format(m) }}</option>{% endfor %}</select>
+          <select name="month">{% for m in months %}{% set month_value = "%02d"|format(m) %}<option value="{{ month_value }}" {% if selected_month == month_value %}selected{% endif %}>{{ month_value }}</option>{% endfor %}</select>
         </label>
       </div>
 
