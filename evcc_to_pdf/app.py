@@ -28,7 +28,7 @@ REPORT_DIR = Path("/share/evcc-pdfs")
 OPTIONS_FILE = Path("/data/options.json")
 DEFAULT_TEMPLATE_KEY = "default"
 DEFAULT_TEMPLATE_LABEL = "Standard HTML"
-APP_VERSION = "0.5.9"
+APP_VERSION = "0.6.0"
 
 DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
 <html lang="de">
@@ -120,7 +120,7 @@ DEFAULT_SETTINGS = {
         "grid_price": 0.0,
         "default_billing_mode": "monthly",
         "default_email_body": "Bitte überweisen Sie den offenen Betrag auf das unten angegebene Konto.",
-        "default_email_subject": "EVCC Abrechnung",
+        "default_email_subject": "EVCC Abrechnung {{period_label}}",
     },
     "cached_assets": [],
     "groups": [],
@@ -529,13 +529,31 @@ def effective_sender(settings, group): return group.get("custom_sender", {}) if 
 def effective_bank(settings, group): return group.get("custom_bank", {}) if group.get("bank_mode") == "custom" else settings.get("bank", {})
 def effective_email_body(settings, group): return group.get("custom_email_body", "") if group.get("email_body_mode") == "custom" else settings.get("reporting", {}).get("default_email_body", "")
 
+def build_period_context(summary):
+    return {
+        "period_label": period_label(summary["period_start"], summary["period_end"]),
+        "period_start": summary["period_start"].strftime("%d.%m.%Y"),
+        "period_end": summary["period_end"].strftime("%d.%m.%Y"),
+        "period_month": summary["period_start"].strftime("%m.%Y"),
+        "period_year": summary["period_start"].strftime("%Y"),
+        "billing_mode_label": billing_mode_label(summary["billing_mode"]),
+    }
+
+def render_shortcuts(text, summary=None):
+    text = str(text or "")
+    if not summary:
+        return text
+    ctx = build_period_context(summary)
+    for key, value in ctx.items():
+        text = text.replace(f"{{{{{key}}}}}", str(value))
+    return text
+
 def effective_email_subject(settings, group, summary=None):
     base_subject = group.get("custom_email_subject", "").strip() if group.get("email_subject_mode") == "custom" else settings.get("reporting", {}).get("default_email_subject", "").strip()
     if not base_subject:
-        base_subject = "EVCC Abrechnung"
-    if summary:
-        return f"{base_subject} – {period_label(summary['period_start'], summary['period_end'])}"
-    return base_subject
+        base_subject = "EVCC Abrechnung {{period_label}}"
+    return render_shortcuts(base_subject, summary)
+
 def effective_billing_mode(settings, group): return group.get("custom_billing_mode", "monthly") if group.get("billing_mode_mode") == "custom" else settings.get("reporting", {}).get("default_billing_mode", "monthly")
 def effective_template_key(settings, group):
     if group.get("html_mode") == "custom":
@@ -644,7 +662,7 @@ def render_html(settings, group, mode=None, manual_year=None, manual_month=None)
     sender = effective_sender(settings, group)
     recipient = {"name": group.get("recipient_name",""), "company": group.get("recipient_company",""), "email": group.get("recipient_email",""), "street": group.get("recipient_street",""), "zip": group.get("recipient_zip",""), "city": group.get("recipient_city","")}
     bank = effective_bank(settings, group)
-    email_body = effective_email_body(settings, group)
+    email_body = render_shortcuts(effective_email_body(settings, group), summary)
     tpl = settings["templates"][effective_template_key(settings, group)]["content"]
     html = Template(tpl).render(
         sender=sender, recipient=recipient, bank=bank,
@@ -679,10 +697,10 @@ def send_email_with_attachment(settings, group, pdf_path, summary):
     if not sender_email or not recipient_email:
         raise ValueError("Absender- oder Empfänger-E-Mail fehlt.")
 
-    copy_email = sender.get("email", "").strip() or sender_email
+    copy_email = sender.get("email", "").strip() or settings.get("sender", {}).get("email", "").strip() or sender_email
     copy_enabled = bool(group.get("sender_copy_enabled")) and bool(copy_email)
     subject = effective_email_subject(settings, group, summary)
-    body = effective_email_body(settings, group) or "Anbei die Abrechnung als PDF."
+    body = render_shortcuts(effective_email_body(settings, group), summary) or "Anbei die Abrechnung als PDF."
     pdf_bytes = pdf_path.read_bytes()
 
     def build_message(target_email, include_copy_header=False):
@@ -701,13 +719,9 @@ def send_email_with_attachment(settings, group, pdf_path, summary):
 
     def send_via_server(server):
         main_msg = build_message(recipient_email, include_copy_header=False)
-        recipients = [recipient_email]
-        if copy_enabled and copy_email and copy_email != recipient_email:
-            recipients.append(copy_email)
-            main_msg["Cc"] = copy_email
-        server.send_message(main_msg, to_addrs=recipients)
+        server.send_message(main_msg, to_addrs=[recipient_email])
 
-        if copy_enabled and copy_email and copy_email != recipient_email:
+        if copy_enabled and copy_email:
             copy_msg = build_message(copy_email, include_copy_header=False)
             server.send_message(copy_msg, to_addrs=[copy_email])
 

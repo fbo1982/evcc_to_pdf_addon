@@ -94,25 +94,28 @@
         </label>
       </div>
 
-      <label><span>E-Mail Inhalt</span>
-        <select name="email_body_mode" id="email_body_mode" onchange="toggleSection('email_body_mode','custom','email_block')">
-          <option value="default" {% if not edit_group or edit_group.email_body_mode == 'default' %}selected{% endif %}>Standard</option>
-          <option value="custom" {% if edit_group and edit_group.email_body_mode == 'custom' %}selected{% endif %}>Gruppenbezogen</option>
-        </select>
-      </label>
-      <div id="email_block" class="subblock" style="{% if not edit_group or edit_group.email_body_mode != 'custom' %}display:none{% endif %}">
-        <label><span>Gruppenbezogener E-Mail-Inhalt</span><textarea name="custom_email_body" rows="6">{{ edit_group.custom_email_body if edit_group else '' }}</textarea></label>
-      </div>
+      <div class="subblock">
+        <h3>E-Mail</h3>
+        <label><span>E-Mail Inhalt</span>
+          <select name="email_body_mode" id="email_body_mode" onchange="toggleSection('email_body_mode','custom','email_block')">
+            <option value="default" {% if not edit_group or edit_group.email_body_mode == 'default' %}selected{% endif %}>Standard</option>
+            <option value="custom" {% if edit_group and edit_group.email_body_mode == 'custom' %}selected{% endif %}>Gruppenbezogen</option>
+          </select>
+        </label>
+        <div id="email_block" class="subblock" style="{% if not edit_group or edit_group.email_body_mode != 'custom' %}display:none{% endif %}">
+          <label><span>Gruppenbezogener E-Mail-Inhalt</span><textarea name="custom_email_body" rows="6">{{ edit_group.custom_email_body if edit_group else '' }}</textarea></label>
+        </div>
 
-      <label><span>E-Mail Betreff</span>
-        <select name="email_subject_mode" id="email_subject_mode" onchange="toggleSection('email_subject_mode','custom','email_subject_block')">
-          <option value="default" {% if not edit_group or edit_group.email_subject_mode == 'default' %}selected{% endif %}>Standard</option>
-          <option value="custom" {% if edit_group and edit_group.email_subject_mode == 'custom' %}selected{% endif %}>Gruppenbezogen</option>
-        </select>
-      </label>
-      <div id="email_subject_block" class="subblock" style="{% if not edit_group or edit_group.email_subject_mode != 'custom' %}display:none{% endif %}">
-        <label><span>Gruppenbezogener E-Mail-Betreff</span><input type="text" name="custom_email_subject" value="{{ edit_group.custom_email_subject if edit_group else '' }}"></label>
-        <p class="muted">Der abgerechnete Zeitraum wird automatisch an den Betreff angehängt.</p>
+        <label><span>E-Mail Betreff</span>
+          <select name="email_subject_mode" id="email_subject_mode" onchange="toggleSection('email_subject_mode','custom','email_subject_block')">
+            <option value="default" {% if not edit_group or edit_group.email_subject_mode == 'default' %}selected{% endif %}>Standard</option>
+            <option value="custom" {% if edit_group and edit_group.email_subject_mode == 'custom' %}selected{% endif %}>Gruppenbezogen</option>
+          </select>
+        </label>
+        <div id="email_subject_block" class="subblock" style="{% if not edit_group or edit_group.email_subject_mode != 'custom' %}display:none{% endif %}">
+          <label><span>Gruppenbezogener E-Mail-Betreff</span><input type="text" name="custom_email_subject" value="{{ edit_group.custom_email_subject if edit_group else '' }}"></label>
+        </div>
+        <p class="muted">Shortcuts: {{period_label}}, {{period_start}}, {{period_end}}, {{period_month}}, {{period_year}}, {{billing_mode_label}}</p>
       </div>
 
       <label><span>Abrechnungsmodus</span>
