@@ -180,6 +180,7 @@ def normalize_group(group: dict) -> dict:
         "custom_email_body": str(group.get("custom_email_body", "")).strip(),
         "billing_mode_source": str(group.get("billing_mode_source", "default") or "default"),
         "custom_billing_mode": str(group.get("custom_billing_mode", "monthly") or "monthly"),
+        "custom_send_day": int(group.get("custom_send_day", 1) or 1),
     }
     return normalized
 
@@ -635,6 +636,7 @@ def groups_page():
             "custom_email_body": request.form.get("custom_email_body", ""),
             "billing_mode_source": request.form.get("billing_mode_source", "default").strip(),
             "custom_billing_mode": request.form.get("custom_billing_mode", "monthly").strip(),
+            "custom_send_day": request.form.get("custom_send_day", "1").strip(),
         }
         group_data = normalize_group(group_data)
         existing = find_group(settings, group_id)
@@ -660,12 +662,10 @@ def templates_page():
 
         if action == "delete":
             key = request.form.get("template_key", "").strip()
-            if key == "default":
-                flash("Das Standard-Template kann nicht gelöscht werden.", "error")
+            if settings["reporting"]["default_template_key"] == key:
+                flash("Das aktuell gesetzte Default-Template kann nicht gelöscht werden.", "error")
             elif key in settings["templates"]:
                 del settings["templates"][key]
-                if settings["reporting"]["default_template_key"] == key:
-                    settings["reporting"]["default_template_key"] = "default"
                 save_settings(settings)
                 flash("Template gelöscht.", "success")
             return redirect(f"{ingress_path()}/templates")
@@ -678,7 +678,8 @@ def templates_page():
                 flash("Default-Template gesetzt.", "success")
             return redirect(f"{ingress_path()}/templates")
 
-        if action == "create":
+        if action in {"create", "update"}:
+            original_key = request.form.get("original_template_key", "").strip()
             key = request.form.get("template_key", "").strip()
             label = request.form.get("template_label", "").strip()
             content = request.form.get("template_content", "")
@@ -692,12 +693,23 @@ def templates_page():
             if not key:
                 flash("Template-Key fehlt.", "error")
                 return redirect(f"{ingress_path()}/templates")
-            settings["templates"][key] = {"label": label or key, "content": content}
+
+            existing = settings["templates"].get(original_key) if original_key else None
+            if action == "update" and original_key and original_key != key and original_key in settings["templates"]:
+                del settings["templates"][original_key]
+                if settings["reporting"]["default_template_key"] == original_key:
+                    settings["reporting"]["default_template_key"] = key
+            settings["templates"][key] = {
+                "label": label or key,
+                "content": content if content else (existing or {}).get("content", "")
+            }
             save_settings(settings)
             flash("Template gespeichert.", "success")
             return redirect(f"{ingress_path()}/templates")
 
-    return render_template("templates.html", title="Templates")
+    edit_key = request.args.get("edit", "").strip()
+    edit_template = settings["templates"].get(edit_key) if edit_key else None
+    return render_template("templates.html", title="Templates", edit_key=edit_key, edit_template=edit_template)
 
 
 @app.route("/report", methods=["GET", "POST"])

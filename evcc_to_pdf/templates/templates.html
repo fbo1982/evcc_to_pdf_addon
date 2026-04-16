@@ -12,12 +12,13 @@
           {% if settings.reporting.default_template_key == key %}<br><span class="chip">Default</span>{% endif %}
         </div>
         <div class="group-actions">
+          <a class="button secondary" href="{{ ingress_path }}/templates?edit={{ key }}">Bearbeiten</a>
           <form method="post" action="{{ ingress_path }}/templates">
             <input type="hidden" name="action" value="set_default">
             <input type="hidden" name="template_key" value="{{ key }}">
             <button type="submit" class="secondary">Als Default</button>
           </form>
-          {% if key != 'default' %}
+          {% if settings.reporting.default_template_key != key %}
           <form method="post" action="{{ ingress_path }}/templates" onsubmit="return confirm('Template löschen?')">
             <input type="hidden" name="action" value="delete">
             <input type="hidden" name="template_key" value="{{ key }}">
@@ -30,11 +31,12 @@
   </section>
 
   <section class="card">
-    <h2>Neues Template</h2>
+    <h2>{{ "Template bearbeiten" if edit_template else "Neues Template" }}</h2>
     <form method="post" action="{{ ingress_path }}/templates" enctype="multipart/form-data" class="stack">
-      <input type="hidden" name="action" value="create">
-      <label><span>Template Key</span><input type="text" name="template_key"></label>
-      <label><span>Bezeichnung</span><input type="text" name="template_label"></label>
+      <input type="hidden" name="action" value="{{ "update" if edit_template else "create" }}">
+      <input type="hidden" name="original_template_key" value="{{ edit_key if edit_template else "" }}">
+      <label><span>Template Key</span><input type="text" name="template_key" value="{{ edit_key if edit_template else "" }}"></label>
+      <label><span>Bezeichnung</span><input type="text" name="template_label" value="{{ edit_template.label if edit_template else "" }}"></label>
 
       <label class="dropbox">
         <span>HTML-Datei hineinziehen oder auswählen</span>

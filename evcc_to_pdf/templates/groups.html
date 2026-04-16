@@ -65,9 +65,11 @@
 
       <label><span>HTML</span>
         <select name="template_choice">
-          <option value="default" {% if not edit_group or edit_group.template_choice == 'default' %}selected{% endif %}>Standard HTML{% if settings.reporting.default_template_key in settings.templates %} ({{ settings.templates[settings.reporting.default_template_key].label }}){% endif %}</option>
+          <option value="default" {% if not edit_group or edit_group.template_choice == 'default' %}selected{% endif %}>Standard HTML</option>
           {% for key,tpl in settings.templates.items() %}
-            <option value="{{ key }}" {% if edit_group and edit_group.template_choice == key %}selected{% endif %}>{{ tpl.label }}{% if settings.reporting.default_template_key == key %} (Default){% endif %}</option>
+            {% if key != settings.reporting.default_template_key %}
+            <option value="{{ key }}" {% if edit_group and edit_group.template_choice == key %}selected{% endif %}>{{ tpl.label }}</option>
+            {% endif %}
           {% endfor %}
         </select>
       </label>
@@ -100,6 +102,7 @@
             {% endfor %}
           </select>
         </label>
+        <label><span>Automatisch versenden zum</span><input type="number" min="1" max="28" name="custom_send_day" value="{{ edit_group.custom_send_day if edit_group and edit_group.custom_send_day else 1 }}"></label>
       </section>
 
       <fieldset>

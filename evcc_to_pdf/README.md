@@ -1,6 +1,6 @@
 # EVCC to PDF
 
-Version 0.4.5
+Version 0.4.6
 
 ## Highlights
 - MQTT als primärer Konfigurationsspeicher mit lokalem Mirror
@@ -12,7 +12,7 @@ Version 0.4.5
 - Fahrzeuge aus EVCC `/api/state` plus Sessions ergänzen
 
 
-0.4.5
+0.4.6
 - robustere Trennung von Fahrzeugen und Ladekarten
 - gruppenbezogene Felder klappen nur bei Auswahl von "custom" auf
 - HTML-Auswahl zeigt Default-Template und hinterlegte Templates
