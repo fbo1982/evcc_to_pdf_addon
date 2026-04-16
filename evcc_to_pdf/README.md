@@ -1,6 +1,6 @@
 # EVCC to PDF
 
-Version 0.4.2
+Version 0.4.3
 
 ## Highlights
 - MQTT als primärer Konfigurationsspeicher mit lokalem Mirror
@@ -10,3 +10,9 @@ Version 0.4.2
 - Abrechnungsmodi: monatlich, quartal, halbjährlich, jährlich
 - HTML-Templates anlegen, hochladen, als Default markieren und löschen
 - Fahrzeuge aus EVCC `/api/state` plus Sessions ergänzen
+
+
+0.4.3
+- robustere Trennung von Fahrzeugen und Ladekarten
+- gruppenbezogene Felder klappen nur bei Auswahl von "custom" auf
+- HTML-Auswahl zeigt Default-Template und hinterlegte Templates

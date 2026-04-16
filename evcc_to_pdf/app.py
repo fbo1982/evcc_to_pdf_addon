@@ -347,15 +347,17 @@ def fetch_available_assets(settings: dict) -> tuple[list[str], list[str]]:
 
     state = fetch_state(settings)
 
+    state_vehicle_names = set()
     raw_vehicles = state.get("vehicles", [])
     if isinstance(raw_vehicles, dict):
         raw_vehicles = list(raw_vehicles.values())
     for item in raw_vehicles:
         name = extract_name(item)
         if name:
+            state_vehicle_names.add(name)
             vehicles.add(name)
 
-    # Try cards/tags from state if present
+    # Karten/Tags direkt aus state lesen
     for key in ("tags", "cards", "rfid", "tokens"):
         raw_cards = state.get(key, [])
         if isinstance(raw_cards, dict):
@@ -366,7 +368,8 @@ def fetch_available_assets(settings: dict) -> tuple[list[str], list[str]]:
                 if name:
                     cards.add(name)
 
-    # Sessions often carry card names or historic values
+    # Session-Werte ergänzen. Alles, was kein bekanntes EVCC-Fahrzeug ist,
+    # behandeln wir standardmäßig als Ladekarte/Tag.
     try:
         sessions = fetch_sessions(settings)
         for s in sessions:
@@ -374,12 +377,17 @@ def fetch_available_assets(settings: dict) -> tuple[list[str], list[str]]:
             if not name:
                 continue
             lowered = name.lower()
-            if "ladekarte" in lowered or "karte" in lowered or "guest" in lowered or "gäste" in lowered:
+            if name in state_vehicle_names:
+                vehicles.add(name)
+            elif any(token in lowered for token in ("ladekarte", "karte", "guest", "gäste", "gaeste", "rfid", "token")):
                 cards.add(name)
             else:
-                vehicles.add(name)
+                cards.add(name)
     except Exception:
         pass
+
+    # Überschneidungen bereinigen: State-Fahrzeuge haben Vorrang als Fahrzeug.
+    cards = {c for c in cards if c not in state_vehicle_names}
 
     return sorted(vehicles, key=lambda x: x.lower()), sorted(cards, key=lambda x: x.lower())
 
