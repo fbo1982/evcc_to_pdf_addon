@@ -29,6 +29,7 @@ DEFAULT_SETTINGS = {
     "sender": {"name": "", "street": "", "zip": "", "city": "", "email": ""},
     "smtp": {"host": "", "port": 587, "user": "", "password": "", "tls": True},
     "scheduler": {"enabled": False, "day_of_month": 1, "time": "07:00"},
+    "bank": {"recipient": "", "iban": "", "bic": "", "institute": ""},
     "reporting": {
         "grid_price": 0.0,
         "billing_mode": "monthly",
@@ -41,45 +42,75 @@ DEFAULT_SETTINGS = {
         "default": {
             "label": "Standard HTML",
             "content": """<!doctype html>
-<html lang=\"de\">
+<html lang="de">
 <head>
-<meta charset=\"utf-8\">
+<meta charset="utf-8">
 <style>
-body { font-family: Arial, sans-serif; font-size: 12px; color: #222; }
-h1,h2,h3 { margin: 0 0 8px 0; }
-.section { margin-bottom: 18px; }
-.meta-table td { padding: 2px 10px 2px 0; vertical-align: top; }
-table.positions { width: 100%; border-collapse: collapse; margin-top: 12px; }
-table.positions th, table.positions td { border: 1px solid #ccc; padding: 6px; text-align: left; }
-table.positions th { background: #f2f2f2; }
-.summary { margin-top: 12px; }
-.small { color: #666; font-size: 10px; }
+@page { size: A4; margin: 16mm 14mm 18mm 18mm; }
+body { font-family: Arial, sans-serif; font-size: 11px; color: #222; }
+.small { font-size: 9px; color: #666; }
+.header { margin-bottom: 18px; }
+.sender-line { font-size: 9px; color: #666; margin-bottom: 12px; }
+.address-wrap { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+.address { width: 48%; }
+h1 { font-size: 20px; margin: 18px 0 8px; }
+h2 { font-size: 13px; margin: 18px 0 6px; }
+table.meta { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+table.meta td { padding: 2px 0; vertical-align: top; }
+table.positions { width: 100%; border-collapse: collapse; margin-top: 10px; }
+table.positions th, table.positions td { border: 1px solid #cfd8e3; padding: 6px; }
+table.positions th { background: #eef3f8; text-align: left; }
+table.positions td.num { text-align: right; }
+.summary { margin-top: 14px; width: 100%; }
+.summary td { padding: 3px 0; }
+.summary td.num { text-align: right; }
+.bank { margin-top: 18px; }
+.footer { margin-top: 24px; font-size: 9px; color: #666; }
 </style>
 </head>
 <body>
-  <div class=\"section\">
-    <h1>EVCC Abrechnung</h1>
-    <div class=\"small\">Erstellt am {{ generated_at }}</div>
+  <div class="header">
+    <div class="sender-line">{{ sender_name }} · {{ sender_street }} · {{ sender_zip }} {{ sender_city }} · {{ sender_email }}</div>
+    <div class="address-wrap">
+      <div class="address">
+        <strong>{{ recipient_company }}</strong><br>
+        {% if recipient_name %}{{ recipient_name }}<br>{% endif %}
+        {{ recipient_street }}<br>
+        {{ recipient_zip }} {{ recipient_city }}
+      </div>
+      <div class="address">
+        <table class="meta">
+          <tr><td><strong>Rechnung</strong></td><td>{{ group_name }}</td></tr>
+          <tr><td><strong>Zeitraum</strong></td><td>{{ period_label }}</td></tr>
+          <tr><td><strong>Erstellt</strong></td><td>{{ generated_at }}</td></tr>
+          <tr><td><strong>Absender</strong></td><td>{{ sender_name }}</td></tr>
+        </table>
+      </div>
+    </div>
+    <h1>Abrechnung Ladevorgänge</h1>
+    <div class="small">Ausgewählte Fahrzeuge / Ladekarten: {{ assets_label }}</div>
   </div>
 
-  <div class=\"section\">
-    <table class=\"meta-table\">
-      <tr><td><strong>Gruppe</strong></td><td>{{ group_name }}</td></tr>
-      <tr><td><strong>Zeitraum</strong></td><td>{{ period_label }}</td></tr>
-      <tr><td><strong>Empfänger</strong></td><td>{{ recipient_company }}{% if recipient_name %} / {{ recipient_name }}{% endif %}</td></tr>
-      <tr><td><strong>Absender</strong></td><td>{{ sender_name }}</td></tr>
-      <tr><td><strong>Assets</strong></td><td>{{ assets_label }}</td></tr>
-    </table>
-  </div>
-
-  <div class=\"section\">
+  <div>
     {{ positions_table | safe }}
   </div>
 
-  <div class=\"section summary\">
-    <p><strong>Gesamtenergie:</strong> {{ total_energy }} kWh</p>
-    <p><strong>Gesamtbetrag:</strong> {{ total_price }} €</p>
+  <table class="summary">
+    <tr><td><strong>Gesamt geladene kWh</strong></td><td class="num">{{ total_energy }} kWh</td></tr>
+    <tr><td><strong>Gesamtbetrag</strong></td><td class="num"><strong>{{ total_price }} €</strong></td></tr>
+  </table>
+
+  <div class="bank">
+    <h2>Bankverbindung</h2>
+    <table class="meta">
+      <tr><td><strong>Empfänger</strong></td><td>{{ bank_recipient }}</td></tr>
+      <tr><td><strong>IBAN</strong></td><td>{{ bank_iban }}</td></tr>
+      <tr><td><strong>BIC</strong></td><td>{{ bank_bic }}</td></tr>
+      <tr><td><strong>Kreditinstitut</strong></td><td>{{ bank_institute }}</td></tr>
+    </table>
   </div>
+
+  <div class="footer">Bitte überweisen Sie den Rechnungsbetrag unter Angabe des Zeitraums {{ period_label }}.</div>
 </body>
 </html>"""
         }
@@ -195,6 +226,13 @@ def normalize_group(group: dict) -> dict:
             "city": str(group.get("custom_sender", {}).get("city", "")).strip(),
             "email": str(group.get("custom_sender", {}).get("email", "")).strip(),
         },
+        "bank_mode": str(group.get("bank_mode", "default") or "default"),
+        "custom_bank": {
+            "recipient": str(group.get("custom_bank", {}).get("recipient", "")).strip(),
+            "iban": str(group.get("custom_bank", {}).get("iban", "")).strip(),
+            "bic": str(group.get("custom_bank", {}).get("bic", "")).strip(),
+            "institute": str(group.get("custom_bank", {}).get("institute", "")).strip(),
+        },
         "template_choice": template_choice,
         "email_body_mode": str(group.get("email_body_mode", "default") or "default"),
         "custom_email_body": str(group.get("custom_email_body", "") or ""),
@@ -207,7 +245,7 @@ def normalize_group(group: dict) -> dict:
 def normalize_settings(loaded: dict | None) -> dict:
     settings = deepcopy(DEFAULT_SETTINGS)
     loaded = loaded or {}
-    for section in ("evcc", "sender", "smtp", "scheduler", "reporting"):
+    for section in ("evcc", "sender", "smtp", "scheduler", "bank", "reporting"):
         if isinstance(loaded.get(section), dict):
             settings[section].update(loaded[section])
     settings["cached_assets"]["assets"] = normalize_assets((loaded.get("cached_assets") or {}).get("assets", loaded.get("cached_assets", {}).get("vehicles", loaded.get("cached_vehicles", []))))
@@ -472,6 +510,12 @@ def get_sender(settings: dict, group: dict) -> dict:
     return settings.get("sender", {})
 
 
+def get_bank_details(settings: dict, group: dict) -> dict:
+    if group.get("bank_mode") == "custom":
+        return group.get("custom_bank", {})
+    return settings.get("bank", {})
+
+
 def get_email_body(settings: dict, group: dict, summary: dict) -> str:
     raw = group.get("custom_email_body", "") if group.get("email_body_mode") == "custom" else settings["reporting"].get("default_email_body", "")
     if not raw.strip():
@@ -495,11 +539,19 @@ def format_period_label(start: datetime, end: datetime, billing_mode: str) -> st
 def build_positions_table(df: pd.DataFrame) -> str:
     rows = []
     for _, row in df.iterrows():
+        start_dt = row["created"]
+        end_raw = row.get("finished") or row.get("updated") or row.get("end") or row.get("disconnected")
+        end_dt = pd.to_datetime(end_raw, errors="coerce", utc=True)
+        if pd.notna(end_dt):
+            end_dt = end_dt.tz_localize(None)
+        date_str = start_dt.strftime('%d.%m.%Y')
+        start_str = start_dt.strftime('%H:%M')
+        end_str = end_dt.strftime('%H:%M') if pd.notna(end_dt) else "-"
         rows.append(
-            f"<tr><td>{row['created'].strftime('%d.%m.%Y %H:%M')}</td><td>{row.get('vehicle','')}</td><td>{float(row.get('chargedEnergy',0)):.2f}</td><td>{float(row.get('price',0)):.2f}</td></tr>"
+            f"<tr><td>{date_str}</td><td>{start_str}</td><td>{end_str}</td><td>{row.get('vehicle','')}</td><td class='num'>{float(row.get('chargedEnergy',0)):.2f}</td><td class='num'>{float(row.get('price',0)):.2f}</td></tr>"
         )
     return (
-        "<table class='positions'><thead><tr><th>Datum</th><th>Asset</th><th>Energie (kWh)</th><th>Preis (€)</th></tr></thead>"
+        "<table class='positions'><thead><tr><th>Datum</th><th>Startzeit</th><th>Endzeit</th><th>Fahrzeug</th><th>Geladene kWh</th><th>Kosten (€)</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table>"
     )
 
@@ -526,6 +578,7 @@ def collect_report_data(settings: dict, group: dict, start: datetime, end: datet
     df = df.sort_values("created", ascending=True)
     billing_mode = get_group_billing_mode(settings, group)
     sender = get_sender(settings, group)
+    bank = get_bank_details(settings, group)
     summary = {
         "group_name": group["name"],
         "recipient_name": group.get("recipient_name", ""),
@@ -533,6 +586,16 @@ def collect_report_data(settings: dict, group: dict, start: datetime, end: datet
         "recipient_email": group.get("recipient_email", ""),
         "sender_name": sender.get("name", ""),
         "sender_email": sender.get("email", ""),
+        "sender_street": sender.get("street", ""),
+        "sender_zip": sender.get("zip", ""),
+        "sender_city": sender.get("city", ""),
+        "recipient_street": group.get("recipient_street", ""),
+        "recipient_zip": group.get("recipient_zip", ""),
+        "recipient_city": group.get("recipient_city", ""),
+        "bank_recipient": bank.get("recipient", ""),
+        "bank_iban": bank.get("iban", ""),
+        "bank_bic": bank.get("bic", ""),
+        "bank_institute": bank.get("institute", ""),
         "period_label": format_period_label(start, end, billing_mode),
         "period_stamp": period_stamp,
         "assets_label": ", ".join(group.get("assets", [])),
@@ -761,6 +824,13 @@ def groups_page():
                 "zip": request.form.get("custom_sender_zip", "").strip(),
                 "city": request.form.get("custom_sender_city", "").strip(),
                 "email": request.form.get("custom_sender_email", "").strip(),
+            },
+            "bank_mode": request.form.get("bank_mode", "default").strip(),
+            "custom_bank": {
+                "recipient": request.form.get("custom_bank_recipient", "").strip(),
+                "iban": request.form.get("custom_bank_iban", "").strip(),
+                "bic": request.form.get("custom_bank_bic", "").strip(),
+                "institute": request.form.get("custom_bank_institute", "").strip(),
             },
             "template_choice": request.form.get("template_choice", "default").strip() or "default",
             "email_body_mode": request.form.get("email_body_mode", "default").strip(),

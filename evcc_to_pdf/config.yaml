@@ -1,6 +1,6 @@
 name: "EVCC to PDF"
 description: "EVCC Abrechnung mit PDF, Mailversand und Scheduler"
-version: "0.5.0"
+version: "0.5.1"
 slug: "evcc_to_pdf"
 url: "https://github.com/fbo1982/evcc_to_pdf_addon"
 startup: services

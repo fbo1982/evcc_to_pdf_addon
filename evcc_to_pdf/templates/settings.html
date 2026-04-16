@@ -38,6 +38,16 @@
   </section>
 
   <section class="card">
+    <h2>Bankverbindung</h2>
+    <div class="form-grid">
+      <label><span>Empfänger</span><input type="text" name="bank_recipient" value="{{ settings.bank.recipient }}"></label>
+      <label><span>IBAN</span><input type="text" name="bank_iban" value="{{ settings.bank.iban }}"></label>
+      <label><span>BIC</span><input type="text" name="bank_bic" value="{{ settings.bank.bic }}"></label>
+      <label><span>Kreditinstitut</span><input type="text" name="bank_institute" value="{{ settings.bank.institute }}"></label>
+    </div>
+  </section>
+
+  <section class="card">
     <h2>SMTP</h2>
     <div class="form-grid">
       <label><span>Host</span><input type="text" name="smtp_host" value="{{ settings.smtp.host }}"></label>
