@@ -131,7 +131,29 @@ def normalize_assets(items) -> list[str]:
     return out
 
 
+def merge_unique(*lists) -> list[str]:
+    out = []
+    seen = set()
+    for values in lists:
+        for item in values or []:
+            name = extract_name(item)
+            if name and name not in seen:
+                seen.add(name)
+                out.append(name)
+    return out
+
+
 def normalize_group(group: dict) -> dict:
+    merged_assets = merge_unique(group.get("assets", []), group.get("vehicles", []), group.get("cards", []))
+
+    # Migration alt -> neu: HTML-Modus + Template-Key auf eine gemeinsame Auswahl abbilden
+    template_choice = str(group.get("template_choice", "")).strip()
+    if not template_choice:
+        if str(group.get("html_mode", "default") or "default") == "custom":
+            template_choice = str(group.get("custom_template_key", "")).strip() or "default"
+        else:
+            template_choice = "default"
+
     normalized = {
         "id": str(group.get("id") or uuid.uuid4()),
         "name": str(group.get("name", "")).strip(),
@@ -141,8 +163,9 @@ def normalize_group(group: dict) -> dict:
         "recipient_street": str(group.get("recipient_street", "")).strip(),
         "recipient_zip": str(group.get("recipient_zip", "")).strip(),
         "recipient_city": str(group.get("recipient_city", "")).strip(),
-        "vehicles": normalize_assets(group.get("vehicles", [])),
-        "cards": normalize_assets(group.get("cards", [])),
+        "assets": merged_assets,
+        "vehicles": merged_assets,
+        "cards": [],
         "grid_price_override": str(group.get("grid_price_override", "")).strip(),
         "sender_mode": str(group.get("sender_mode", "default") or "default"),
         "custom_sender": {
@@ -152,8 +175,7 @@ def normalize_group(group: dict) -> dict:
             "city": str(group.get("custom_sender", {}).get("city", "")).strip(),
             "email": str(group.get("custom_sender", {}).get("email", "")).strip(),
         },
-        "html_mode": str(group.get("html_mode", "default") or "default"),
-        "custom_template_key": str(group.get("custom_template_key", "")).strip(),
+        "template_choice": template_choice,
         "email_body_mode": str(group.get("email_body_mode", "default") or "default"),
         "custom_email_body": str(group.get("custom_email_body", "")).strip(),
         "billing_mode_source": str(group.get("billing_mode_source", "default") or "default"),
@@ -509,6 +531,7 @@ def inject_common():
     return {
         "settings": settings,
         "ingress_path": ingress_path(),
+        "all_assets": merge_unique(settings.get("cached_assets", {}).get("vehicles", []), settings.get("cached_assets", {}).get("cards", [])),
     }
 
 
@@ -597,8 +620,7 @@ def groups_page():
             "recipient_street": request.form.get("recipient_street", "").strip(),
             "recipient_zip": request.form.get("recipient_zip", "").strip(),
             "recipient_city": request.form.get("recipient_city", "").strip(),
-            "vehicles": request.form.getlist("vehicles"),
-            "cards": request.form.getlist("cards"),
+            "assets": request.form.getlist("assets"),
             "grid_price_override": request.form.get("grid_price_override", "").strip(),
             "sender_mode": request.form.get("sender_mode", "default").strip(),
             "custom_sender": {
@@ -608,8 +630,7 @@ def groups_page():
                 "city": request.form.get("custom_sender_city", "").strip(),
                 "email": request.form.get("custom_sender_email", "").strip(),
             },
-            "html_mode": request.form.get("html_mode", "default").strip(),
-            "custom_template_key": request.form.get("custom_template_key", "").strip(),
+            "template_choice": request.form.get("template_choice", "default").strip() or "default",
             "email_body_mode": request.form.get("email_body_mode", "default").strip(),
             "custom_email_body": request.form.get("custom_email_body", ""),
             "billing_mode_source": request.form.get("billing_mode_source", "default").strip(),

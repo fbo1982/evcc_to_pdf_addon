@@ -14,9 +14,8 @@
         <div class="group-item">
           <div>
             <strong>{{ group.name }}</strong><br>
-            <span class="muted">{{ group.recipient_company }} · {{ group.recipient_email }}</span><br>
-            {% if group.vehicles %}<span class="muted">🚗 {{ group.vehicles|join(", ") }}</span>{% endif %}
-            {% if group.cards %}<br><span class="muted">💳 {{ group.cards|join(", ") }}</span>{% endif %}
+            <span class="muted">{{ group.recipient_company }} · {{ group.recipient_email }}</span>
+            {% if group.assets %}<br><span class="muted">{{ group.assets|join(", ") }}</span>{% endif %}
           </div>
           <div class="group-actions">
             <a class="button secondary" href="{{ ingress_path }}/groups?edit={{ group.id }}">Bearbeiten</a>
@@ -38,72 +37,59 @@
     <h2>{{ "Gruppe bearbeiten" if edit_group else "Neue Gruppe" }}</h2>
     <form method="post" action="{{ ingress_path }}/groups" class="stack">
       <input type="hidden" name="group_id" value="{{ edit_group.id if edit_group else '' }}">
+
       <label><span>Gruppenname</span><input type="text" name="name" value="{{ edit_group.name if edit_group else '' }}" required></label>
       <label><span>Empfängername</span><input type="text" name="recipient_name" value="{{ edit_group.recipient_name if edit_group else '' }}"></label>
       <label><span>Firma</span><input type="text" name="recipient_company" value="{{ edit_group.recipient_company if edit_group else '' }}"></label>
       <label><span>E-Mail</span><input type="email" name="recipient_email" value="{{ edit_group.recipient_email if edit_group else '' }}"></label>
       <label><span>Straße</span><input type="text" name="recipient_street" value="{{ edit_group.recipient_street if edit_group else '' }}"></label>
-      <div class="form-grid">
-        <label><span>PLZ</span><input type="text" name="recipient_zip" value="{{ edit_group.recipient_zip if edit_group else '' }}"></label>
-        <label><span>Ort</span><input type="text" name="recipient_city" value="{{ edit_group.recipient_city if edit_group else '' }}"></label>
-      </div>
+      <label><span>PLZ</span><input type="text" name="recipient_zip" value="{{ edit_group.recipient_zip if edit_group else '' }}"></label>
+      <label><span>Ort</span><input type="text" name="recipient_city" value="{{ edit_group.recipient_city if edit_group else '' }}"></label>
       <label><span>Optionaler Preis-Override €/kWh</span><input type="text" name="grid_price_override" value="{{ edit_group.grid_price_override if edit_group else '' }}"></label>
 
-      <div class="form-grid">
-        <label><span>Absender</span>
-          <select id="sender_mode" name="sender_mode">
-            <option value="default" {% if not edit_group or edit_group.sender_mode == 'default' %}selected{% endif %}>Standard-Absender</option>
-            <option value="custom" {% if edit_group and edit_group.sender_mode == 'custom' %}selected{% endif %}>Gruppenbezogener Absender</option>
-          </select>
-        </label>
-        <label><span>HTML</span>
-          <select id="html_mode" name="html_mode">
-            <option value="default" {% if not edit_group or edit_group.html_mode == 'default' %}selected{% endif %}>Standard HTML</option>
-            <option value="custom" {% if edit_group and edit_group.html_mode == 'custom' %}selected{% endif %}>Eigenes HTML</option>
-          </select>
-        </label>
-        <label><span>E-Mail Inhalt</span>
-          <select id="email_body_mode" name="email_body_mode">
-            <option value="default" {% if not edit_group or edit_group.email_body_mode == 'default' %}selected{% endif %}>Standard E-Mail-Inhalt</option>
-            <option value="custom" {% if edit_group and edit_group.email_body_mode == 'custom' %}selected{% endif %}>Gruppenbezogener E-Mail-Inhalt</option>
-          </select>
-        </label>
-        <label><span>Abrechnungsmodus</span>
-          <select id="billing_mode_source" name="billing_mode_source">
-            <option value="default" {% if not edit_group or edit_group.billing_mode_source == 'default' %}selected{% endif %}>Standard-Abrechnungsmodus</option>
-            <option value="custom" {% if edit_group and edit_group.billing_mode_source == 'custom' %}selected{% endif %}>Gruppenbezogener Abrechnungsmodus</option>
-          </select>
-        </label>
-      </div>
+      <label><span>Absender</span>
+        <select id="sender_mode" name="sender_mode">
+          <option value="default" {% if not edit_group or edit_group.sender_mode == 'default' %}selected{% endif %}>Standard</option>
+          <option value="custom" {% if edit_group and edit_group.sender_mode == 'custom' %}selected{% endif %}>Gruppenbezogen</option>
+        </select>
+      </label>
 
       <section id="custom-sender-section" class="subcard">
         <h3>Gruppenbezogener Absender</h3>
-        <div class="form-grid">
-          <label><span>Name</span><input type="text" name="custom_sender_name" value="{{ edit_group.custom_sender.name if edit_group else '' }}"></label>
-          <label><span>E-Mail</span><input type="email" name="custom_sender_email" value="{{ edit_group.custom_sender.email if edit_group else '' }}"></label>
-          <label><span>Straße</span><input type="text" name="custom_sender_street" value="{{ edit_group.custom_sender.street if edit_group else '' }}"></label>
-          <label><span>PLZ</span><input type="text" name="custom_sender_zip" value="{{ edit_group.custom_sender.zip if edit_group else '' }}"></label>
-          <label><span>Ort</span><input type="text" name="custom_sender_city" value="{{ edit_group.custom_sender.city if edit_group else '' }}"></label>
-        </div>
+        <label><span>Name</span><input type="text" name="custom_sender_name" value="{{ edit_group.custom_sender.name if edit_group else '' }}"></label>
+        <label><span>E-Mail</span><input type="email" name="custom_sender_email" value="{{ edit_group.custom_sender.email if edit_group else '' }}"></label>
+        <label><span>Straße</span><input type="text" name="custom_sender_street" value="{{ edit_group.custom_sender.street if edit_group else '' }}"></label>
+        <label><span>PLZ</span><input type="text" name="custom_sender_zip" value="{{ edit_group.custom_sender.zip if edit_group else '' }}"></label>
+        <label><span>Ort</span><input type="text" name="custom_sender_city" value="{{ edit_group.custom_sender.city if edit_group else '' }}"></label>
       </section>
 
-      <section id="custom-template-section" class="subcard">
-        <h3>Gruppenbezogene Vorlagen</h3>
-        <div class="form-grid">
-          <label><span>HTML Template</span>
-            <select name="custom_template_key">
-              {% for key,tpl in settings.templates.items() %}
-              <option value="{{ key }}" {% if edit_group and edit_group.custom_template_key == key %}selected{% elif (not edit_group or not edit_group.custom_template_key) and settings.reporting.default_template_key == key %}selected{% endif %}>{{ tpl.label }}{% if settings.reporting.default_template_key == key %} (Default){% endif %}</option>
-              {% endfor %}
-            </select>
-          </label>
-        </div>
-      </section>
+      <label><span>HTML</span>
+        <select name="template_choice">
+          <option value="default" {% if not edit_group or edit_group.template_choice == 'default' %}selected{% endif %}>Standard HTML{% if settings.reporting.default_template_key in settings.templates %} ({{ settings.templates[settings.reporting.default_template_key].label }}){% endif %}</option>
+          {% for key,tpl in settings.templates.items() %}
+            <option value="{{ key }}" {% if edit_group and edit_group.template_choice == key %}selected{% endif %}>{{ tpl.label }}{% if settings.reporting.default_template_key == key %} (Default){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label><span>E-Mail Inhalt</span>
+        <select id="email_body_mode" name="email_body_mode">
+          <option value="default" {% if not edit_group or edit_group.email_body_mode == 'default' %}selected{% endif %}>Standard</option>
+          <option value="custom" {% if edit_group and edit_group.email_body_mode == 'custom' %}selected{% endif %}>Gruppenbezogen</option>
+        </select>
+      </label>
 
       <section id="custom-email-section" class="subcard">
         <h3>Gruppenbezogener E-Mail-Inhalt</h3>
         <label><span>E-Mail-Inhalt</span><textarea name="custom_email_body" rows="6">{{ edit_group.custom_email_body if edit_group else '' }}</textarea></label>
       </section>
+
+      <label><span>Abrechnungsmodus</span>
+        <select id="billing_mode_source" name="billing_mode_source">
+          <option value="default" {% if not edit_group or edit_group.billing_mode_source == 'default' %}selected{% endif %}>Standard</option>
+          <option value="custom" {% if edit_group and edit_group.billing_mode_source == 'custom' %}selected{% endif %}>Gruppenbezogen</option>
+        </select>
+      </label>
 
       <section id="custom-billing-section" class="subcard">
         <h3>Gruppenbezogener Abrechnungsmodus</h3>
@@ -117,19 +103,10 @@
       </section>
 
       <fieldset>
-        <legend>🚗 Fahrzeuge</legend>
+        <legend>Fahrzeuge und Ladekarten</legend>
         <div class="checkbox-grid">
-          {% for vehicle in settings.cached_assets.vehicles %}
-          <label class="checkbox"><input type="checkbox" name="vehicles" value="{{ vehicle }}" {% if edit_group and vehicle in edit_group.vehicles %}checked{% endif %}><span>{{ vehicle }}</span></label>
-          {% endfor %}
-        </div>
-      </fieldset>
-
-      <fieldset>
-        <legend>💳 Ladekarten</legend>
-        <div class="checkbox-grid">
-          {% for card in settings.cached_assets.cards %}
-          <label class="checkbox"><input type="checkbox" name="cards" value="{{ card }}" {% if edit_group and card in edit_group.cards %}checked{% endif %}><span>{{ card }}</span></label>
+          {% for asset in all_assets %}
+          <label class="checkbox"><input type="checkbox" name="assets" value="{{ asset }}" {% if edit_group and asset in edit_group.assets %}checked{% endif %}><span>{{ asset }}</span></label>
           {% endfor %}
         </div>
       </fieldset>
@@ -149,16 +126,14 @@ function toggleSection(selectId, sectionId) {
 
 function initGroupFormToggles() {
   toggleSection('sender_mode', 'custom-sender-section');
-  toggleSection('html_mode', 'custom-template-section');
   toggleSection('email_body_mode', 'custom-email-section');
   toggleSection('billing_mode_source', 'custom-billing-section');
 
-  ['sender_mode', 'html_mode', 'email_body_mode', 'billing_mode_source'].forEach(function(id) {
+  ['sender_mode', 'email_body_mode', 'billing_mode_source'].forEach(function(id) {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('change', function() {
         if (id === 'sender_mode') toggleSection('sender_mode', 'custom-sender-section');
-        if (id === 'html_mode') toggleSection('html_mode', 'custom-template-section');
         if (id === 'email_body_mode') toggleSection('email_body_mode', 'custom-email-section');
         if (id === 'billing_mode_source') toggleSection('billing_mode_source', 'custom-billing-section');
       });
