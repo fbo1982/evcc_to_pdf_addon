@@ -1,2 +1,37 @@
-name: EVCC to PDF
-version: 1.0.0
+name: "EVCC to PDF"
+description: "EVCC Abrechnung mit Weboberfläche, PDF und E-Mail-Versand"
+version: "1.0.1"
+slug: "evcc_to_pdf"
+url: "https://github.com/fbo1982/evcc_to_pdf_addon"
+startup: services
+boot: auto
+init: false
+
+arch:
+  - amd64
+  - aarch64
+
+ingress: true
+ingress_port: 8099
+panel_title: "EVCC to PDF"
+panel_icon: "mdi:file-document-outline"
+
+map:
+  - type: addon_config
+    read_only: false
+  - type: share
+    read_only: false
+
+options:
+  mqtt_host: "core-mosquitto"
+  mqtt_port: 1883
+  mqtt_user: ""
+  mqtt_password: ""
+  mqtt_base_topic: "/evcc2pdf"
+
+schema:
+  mqtt_host: str
+  mqtt_port: port
+  mqtt_user: str?
+  mqtt_password: password?
+  mqtt_base_topic: str
