@@ -28,26 +28,36 @@ REPORT_DIR = Path("/share/evcc-pdfs")
 OPTIONS_FILE = Path("/data/options.json")
 DEFAULT_TEMPLATE_KEY = "default"
 DEFAULT_TEMPLATE_LABEL = "Standard HTML"
-APP_VERSION = "0.6.3"
+APP_VERSION = "0.6.4"
 
 DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="utf-8">
   <style>
-    @page { size: A4; margin: 18mm 14mm 18mm 14mm; }
+    @page {
+      size: A4;
+      margin: 18mm 14mm 18mm 14mm;
+      @bottom-center {
+        content: "- Seite " counter(page) " / " counter(pages) " -";
+        font-size: 9pt;
+        color: #444;
+      }
+    }
     body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 11pt; color: #111; }
-    .header { display: table; width: 100%; margin-bottom: 30px; }
+    .header { display: table; width: 100%; margin-bottom: 34px; }
     .col { display: table-cell; width: 50%; vertical-align: top; }
     .right { text-align: right; }
-    .period { margin: 18px 0 14px; font-weight: bold; }
+    .date-line { margin-top: 28px; margin-bottom: 28px; }
+    .period { margin: 22px 0 22px; font-weight: bold; }
     table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 10.5pt; }
     th, td { border: 1px solid #666; padding: 6px 7px; vertical-align: top; }
     th { background: #efefef; text-align: left; }
     .summary { margin-top: 16px; }
     .summary p { margin: 5px 0; }
     .bank { margin-top: 24px; }
-    .footer { margin-top: 28px; }
+    .closing { margin-top: 26px; }
+    .signature { margin-top: 22px; }
   </style>
 </head>
 <body>
@@ -56,15 +66,13 @@ DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
       <strong>{{ recipient.company or recipient.name }}</strong><br>
       {{ recipient.name }}<br>
       {{ recipient.street }}<br>
-      {{ recipient.zip }} {{ recipient.city }}<br>
-      {{ recipient.email }}
+      {{ recipient.zip }} {{ recipient.city }}
     </div>
     <div class="col right">
       <strong>{{ sender.name }}</strong><br>
       {{ sender.street }}<br>
-      {{ sender.zip }} {{ sender.city }}<br>
-      {{ sender.email }}<br><br>
-      {{ invoice_date }}
+      {{ sender.zip }} {{ sender.city }}
+      <div class="date-line">{{ invoice_date }}</div>
     </div>
   </div>
 
@@ -94,17 +102,16 @@ DEFAULT_TEMPLATE_HTML = """<!DOCTYPE html>
   <div class="bank">
     <p>Ich bitte um Begleichung der Kosten für den entsprechenden Zeitraum auf folgendes Konto:</p>
     <p>
-      {{ bank.recipient }}<br>
-      IBAN: {{ bank.iban }}<br>
-      BIC: {{ bank.bic }}<br>
+      <strong>Empfänger:</strong> {{ bank.recipient }}<br>
+      <strong>IBAN:</strong> {{ bank.iban }}<br>
+      <strong>BIC:</strong> {{ bank.bic }}<br>
       {{ bank.institute }}
     </p>
   </div>
 
-  <div class="footer">
-    <p>{{ email_body|replace('\n', '<br>')|safe }}</p>
+  <div class="closing">
     <p>Mit freundlichen Grüßen</p>
-    <p>{{ sender.name }}</p>
+    <p class="signature">{{ sender.name }}</p>
   </div>
 </body>
 </html>"""
