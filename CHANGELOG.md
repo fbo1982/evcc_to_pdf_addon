@@ -1,11 +1,21 @@
 # Changelog
 
+## v1.1.2
+
+- Version auf **v1.1.2** angehoben.
+- Fix für das mitgelieferte Standard-Template: verhält sich jetzt wie ein normales Benutzer-Template.
+- Änderungen im Editor werden für das Standard-Template gespeichert.
+- Standard-Template kann gelöscht werden, sobald ein anderes Template als Default gesetzt ist.
+- Ausgeliefertes Standard-HTML auf das bereitgestellte Template aktualisiert.
+
 ## v1.1.1
 
 - Version auf **v1.1.1** angehoben.
 - Das bisherige **Standard-Template** wird nun als Editor-kompatibles Template ausgeliefert.
 - Standard-Template enthält jetzt bereits strukturierte Editor-Bausteine mit den vorhandenen EVCC-/Jinja-Platzhaltern, sodass es direkt im grafischen Editor bearbeitet werden kann.
 - Bestehende Installationen erhalten für das Default-Template automatisch die editorfähige Standardstruktur.
+- Das mitgelieferte Standard-Template verhält sich jetzt wie ein normales Benutzer-Template: Änderungen aus dem Editor bleiben erhalten und es kann gelöscht werden, sobald ein anderes Template als Default gesetzt wurde.
+- Das ausgelieferte Standard-Template verwendet jetzt den bereitgestellten HTML-Inhalt als Startvorlage.
 
 ## v1.1.0
 

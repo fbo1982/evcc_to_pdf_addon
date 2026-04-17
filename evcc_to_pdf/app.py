@@ -29,16 +29,97 @@ REPORT_DIR = Path("/share/evcc-pdfs")
 OPTIONS_FILE = Path("/data/options.json")
 DEFAULT_TEMPLATE_KEY = "default"
 DEFAULT_TEMPLATE_LABEL = "Standard HTML"
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.1.2"
 
-DEFAULT_TEMPLATE_HTML = """
-<!DOCTYPE html>
+DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
 <html lang="de">
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page {
+      size: A4;
+      margin: 14mm 10mm 16mm 10mm;
+      @bottom-center {
+        content: "- Seite " counter(page) " / " counter(pages) " -";
+        font-size: 9pt;
+        color: #444;
+      }
+    }
+    body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 10pt; color: #111; }
+    .header { display: table; width: 100%; margin-bottom: 28px; }
+    .col { display: table-cell; width: 50%; vertical-align: top; }
+    .right { text-align: right; }
+    .date-line { margin-top: 24px; margin-bottom: 30px; }
+    .period { margin: 26px 0 26px; font-weight: bold; font-size: 11pt; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 9.2pt; table-layout: fixed; }
+    th, td { border: 1px solid #666; padding: 5px 6px; vertical-align: top; word-wrap: break-word; }
+    th { background: #efefef; text-align: left; }
+    .summary { margin-top: 14px; }
+    .summary p { margin: 4px 0; }
+    .bank { margin-top: 20px; }
+    .closing { margin-top: 24px; }
+    .signature { margin-top: 10px; }
+    .notice { margin-top: 20px; font-size: 9pt; color: #444; }
+  </style>
+</head>
 <body>
-  <p>Standardtemplate wird geladen …</p>
+  <div class="header">
+    <div class="col">
+      <strong>{{ recipient.company or recipient.name }}</strong><br>
+      {{ recipient.name }}<br>
+      {{ recipient.street }}<br>
+      {{ recipient.zip }} {{ recipient.city }}
+    </div>
+    <div class="col right">
+      <strong>{{ sender.name }}</strong><br>
+      {{ sender.street }}<br>
+      {{ sender.zip }} {{ sender.city }}
+      <div class="date-line">{{ invoice_date }}</div>
+    </div>
+  </div>
+
+  <div class="period">{{ billing_mode_label }} – {{ period_label }}</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Startzeit</th>
+        <th>Endzeit</th>
+        <th>Fahrzeug</th>
+        <th>Geladene kWh</th>
+        <th>Kosten (€)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ rows_html|safe }}
+    </tbody>
+  </table>
+
+  <div class="summary">
+    <p><strong>Gesamt geladene kWh:</strong> {{ total_energy_kwh }}</p>
+    <p><strong>Gesamtkosten:</strong> {{ total_cost_eur }}</p>
+  </div>
+
+  <div class="bank">
+    <p>Ich bitte um Begleichung der Kosten für den entsprechenden Zeitraum auf folgendes Konto:</p>
+    <p>
+      <strong>Empfänger:</strong> {{ bank.recipient }}<br>
+      <strong>IBAN:</strong> {{ bank.iban }}<br>
+      <strong>BIC:</strong> {{ bank.bic }}<br>
+      {{ bank.institute }}
+    </p>
+  </div>
+
+  <div class="closing">
+    <p>Mit freundlichen Grüßen</p>
+    <p class="signature">{{ sender.name }}</p>
+    <p class="notice">Dieses Dokument wurde elektronisch erstellt und bedarf keiner Unterschrift.</p>
+  </div>
 </body>
-</html>
-"""
+</html>"""
+
+DEFAULT_TEMPLATE_HTML = ""
 
 
 EDITOR_DATA_PREFIX = "<!-- EVCC_EDITOR_DATA_BASE64:"
@@ -174,6 +255,18 @@ def render_editor_template_html(schema):
     encoded = base64.b64encode(json.dumps(schema, ensure_ascii=False).encode("utf-8")).decode("ascii")
     return f"{EDITOR_DATA_PREFIX}{encoded} -->\n" + html
 
+
+def create_seed_template_entry():
+    schema = build_default_editor_schema(DEFAULT_TEMPLATE_SOURCE_HTML)
+    return {
+        "key": DEFAULT_TEMPLATE_KEY,
+        "label": DEFAULT_TEMPLATE_LABEL,
+        "content": render_editor_template_html(schema),
+    }
+
+
+DEFAULT_TEMPLATE_HTML = create_seed_template_entry()["content"]
+
 DEFAULT_SETTINGS = {
     "meta": {"version": APP_VERSION},
     "evcc": {"url": "", "password": ""},
@@ -300,11 +393,14 @@ def normalize_template_dict(templates):
         tpl_key = str(value.get("key") or key).strip()
         if not tpl_key:
             continue
-        out[tpl_key] = {"key": tpl_key, "label": str(value.get("label") or tpl_key).strip(), "content": str(value.get("content") or "").strip()}
-    if DEFAULT_TEMPLATE_KEY not in out:
-        out[DEFAULT_TEMPLATE_KEY] = {"key": DEFAULT_TEMPLATE_KEY, "label": DEFAULT_TEMPLATE_LABEL, "content": DEFAULT_TEMPLATE_HTML}
-    out[DEFAULT_TEMPLATE_KEY]["label"] = DEFAULT_TEMPLATE_LABEL
-    out[DEFAULT_TEMPLATE_KEY]["content"] = DEFAULT_TEMPLATE_HTML
+        out[tpl_key] = {
+            "key": tpl_key,
+            "label": str(value.get("label") or tpl_key).strip(),
+            "content": str(value.get("content") or "").strip(),
+        }
+    if not out:
+        seed = create_seed_template_entry()
+        out[seed["key"]] = seed
     return out
 
 def normalize_group(group):
@@ -347,7 +443,7 @@ def normalize_settings(raw):
     settings["meta"]["version"] = APP_VERSION
     settings["templates"] = normalize_template_dict(settings.get("templates", {}))
     if settings.get("default_template_key") not in settings["templates"]:
-        settings["default_template_key"] = DEFAULT_TEMPLATE_KEY
+        settings["default_template_key"] = next(iter(settings["templates"]), DEFAULT_TEMPLATE_KEY)
     assets = settings.get("cached_assets", [])
     if not isinstance(assets, list):
         assets = []
