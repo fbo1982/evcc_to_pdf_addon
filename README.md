@@ -1,6 +1,6 @@
 # EVCC to PDF
 
-![Version](https://img.shields.io/badge/version-1.1.2-brightgreen)
+![Version](https://img.shields.io/badge/version-1.2.0-brightgreen)
 ![Status](https://img.shields.io/badge/status-stable-success)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Addon-blue)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
@@ -60,6 +60,8 @@ Button oben klicken
 - PDF-Abrechnung aus EVCC
 - Automatischer E-Mail Versand
 - Gruppenverwaltung
+- Strompreis je Gruppe wahlweise manuell oder automatische BMF-Strompreispauschale (Destatis 61243-0001)
+- Auswertung nach Fahrzeugen mit Zwischensummen
 - Abrechnungsmodi:
   - Monatlich
   - Quartal
@@ -69,7 +71,7 @@ Button oben klicken
 - HTML Templates
 - Bankdaten
 - CC an Absender
-- Safe Storage
+- Persistente, atomare Speicherung mit Backups und MQTT-Fallback
 
 ---
 

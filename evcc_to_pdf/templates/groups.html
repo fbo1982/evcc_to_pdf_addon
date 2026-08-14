@@ -45,7 +45,17 @@
       <label><span>Straße</span><input type="text" name="recipient_street" value="{{ edit_group.recipient_street if edit_group else '' }}"></label>
       <label><span>PLZ</span><input type="text" name="recipient_zip" value="{{ edit_group.recipient_zip if edit_group else '' }}"></label>
       <label><span>Ort</span><input type="text" name="recipient_city" value="{{ edit_group.recipient_city if edit_group else '' }}"></label>
-      <label><span>Preis-Override €/kWh</span><input type="text" name="grid_price_override" value="{{ edit_group.grid_price_override if edit_group else '' }}"></label>
+      <div class="subblock price-mode-block">
+        <label class="checkbox">
+          <input type="checkbox" id="grid_price_bmf" name="grid_price_bmf" onchange="toggleGridPriceMode()" {% if edit_group and edit_group.grid_price_mode == 'bmf' %}checked{% endif %}>
+          <span>BMF-Strompreispauschale automatisch ermitteln</span>
+        </label>
+        <p class="muted small">Verwendet für das jeweilige Abrechnungsjahr den Destatis-Gesamtstrompreis (Statistik 61243-0001) aus dem 1. Halbjahr des Vorjahres für 5.000 bis unter 15.000 kWh und rundet ihn auf volle Cent ab.</p>
+        {% if current_bmf %}
+          <p class="price-preview"><strong>Aktuell für {{ current_bmf.billing_year }}:</strong> {{ "%.2f"|format(current_bmf.rate_eur_kwh)|replace(".", ",") }} €/kWh</p>
+        {% endif %}
+        <label id="manual_grid_price_label"><span>Preis-Override €/kWh</span><input id="grid_price_override" type="text" name="grid_price_override" value="{{ edit_group.grid_price_override if edit_group else '' }}"></label>
+      </div>
 
       <label><span>Absender</span>
         <select id="sender_mode" name="sender_mode" onchange="toggleSection('sender_mode','custom','sender_block')">
@@ -166,4 +176,16 @@
     </form>
   </section>
 </div>
+<script>
+function toggleGridPriceMode() {
+  const checkbox = document.getElementById('grid_price_bmf');
+  const input = document.getElementById('grid_price_override');
+  const label = document.getElementById('manual_grid_price_label');
+  if (!checkbox || !input || !label) return;
+  const automatic = checkbox.checked;
+  input.readOnly = automatic;
+  label.classList.toggle('field-inactive', automatic);
+}
+document.addEventListener('DOMContentLoaded', toggleGridPriceMode);
+</script>
 {% endblock %}

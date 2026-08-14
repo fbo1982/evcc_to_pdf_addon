@@ -105,3 +105,9 @@ button.danger { background:#ff5a5a; color:white; }
 .mini-table th { background:#eef5fb; }
 .mini-html { color:#0f172a; }
 hr { border:0; border-top:1px solid rgba(122,166,232,.28); margin:18px 0; }
+
+.price-mode-block { display:grid; gap:12px; }
+.price-mode-block p { margin:0; }
+.price-preview { padding:10px 12px; border:1px solid rgba(72,199,255,.35); border-radius:12px; background:rgba(72,199,255,.08); }
+.field-inactive { opacity:.55; }
+.field-inactive input { cursor:not-allowed; }

@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.2.0
+
+- Persistenzfehler behoben: `addon_config` wird in Home Assistant unter `/config` in den Container gemountet; Einstellungen werden jetzt dort statt im nicht persistenten `/addon_config/...` gespeichert.
+- Einstellungen werden atomar geschrieben und vor Änderungen automatisch gesichert (bis zu 20 Backups).
+- Bei beschädigter `settings.json` wird zuerst ein gültiges Backup, danach der MQTT-Spiegel verwendet; beschädigte Dateien bleiben als `settings_corrupt_*.json` erhalten.
+- Werkseinstellungen werden bei einem kurzzeitig nicht erreichbaren MQTT-Broker nicht mehr automatisch als retained Konfiguration veröffentlicht.
+- Bestehende Legacy-Einstellungen werden, soweit noch vorhanden, nach `/config/settings.json` migriert.
+- Neue Gruppenoption **BMF-Strompreispauschale automatisch ermitteln**.
+- Für 2026 ist der amtliche Wert 0,34 €/kWh hinterlegt (Basis: Destatis 61243-0001, 1. Halbjahr 2025: 0,3436 €/kWh, auf volle Cent abgerundet).
+- Für Folgejahre 2027–2030 versucht das Add-on den amtlichen Destatis-Wert automatisch aus der veröffentlichten CSV-Tabelle zu ermitteln und speichert ihn persistent im Cache.
+- Bei manueller Preiswahl bleibt der bisherige Preis-Override unverändert nutzbar.
+- In der PDF-Ausgabe wird der zugrunde gelegte Strompreis ausgewiesen. Die Zeile **„Preisermittlung“** wird nur bei BMF-Automatik ausgegeben und entfällt bei manueller Preiswahl vollständig.
+- Standardausgabe nach Fahrzeugen gruppiert; jedes Fahrzeug erhält eine eigene Tabelle und eine Zwischensumme.
+- Neue Template-Kontexte: `vehicle_groups`, `electricity_price`, `electricity_price_eur_kwh`, `price_mode`, `price_method_label`, `price_source_label`, `price_source_year`.
+- Das unveränderte mit v1.1.2 ausgelieferte Standardtemplate wird automatisch auf die neue Ausgabe migriert; individuell bearbeitete Standardtemplates werden nicht überschrieben.
+
 ## v1.1.2
 
 - Version auf **v1.1.2** angehoben.

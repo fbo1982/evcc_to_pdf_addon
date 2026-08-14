@@ -1,5 +1,9 @@
 import base64
+import csv
+import hashlib
 import json
+import logging
+import math
 import os
 import re
 import shutil
@@ -11,6 +15,7 @@ import uuid
 from copy import deepcopy
 from datetime import datetime, timedelta
 from email.message import EmailMessage
+from io import StringIO
 from pathlib import Path
 
 import pandas as pd
@@ -22,14 +27,35 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from weasyprint import HTML
 
 APP_PORT = 8099
-SETTINGS_DIR = Path("/addon_config/evcc_to_pdf")
+SETTINGS_DIR = Path(os.environ.get("EVCC_TO_PDF_SETTINGS_DIR", "/config"))
 SETTINGS_FILE = SETTINGS_DIR / "settings.json"
 BACKUP_DIR = SETTINGS_DIR / "backups"
+BMF_PRICE_CACHE_FILE = SETTINGS_DIR / "bmf_price_cache.json"
+LEGACY_SETTINGS_FILES = [
+    Path("/addon_config/evcc_to_pdf/settings.json"),
+    Path("/data/evcc_to_pdf/settings.json"),
+    Path("/data/settings.json"),
+]
 REPORT_DIR = Path("/share/evcc-pdfs")
 OPTIONS_FILE = Path("/data/options.json")
 DEFAULT_TEMPLATE_KEY = "default"
 DEFAULT_TEMPLATE_LABEL = "Standard HTML"
-APP_VERSION = "1.1.2"
+LOGGER = logging.getLogger("evcc_to_pdf")
+DESTatis_TABLE_CODE = "61243-0001"
+DESTatis_CSV_URL = "https://www-genesis.destatis.de/genesis-old/downloads/00/tables/61243-0001_00.csv"
+LEGACY_DEFAULT_SOURCE_HASHES = {
+    "5492eab4e4ea677da86d5c283c30f9ae1b4e70f3af677161232106487a6f9f01",
+}
+BMF_RATE_CATALOG = {
+    2026: {
+        "billing_year": 2026,
+        "source_year": 2025,
+        "raw_eur_kwh": 0.3436,
+        "rate_eur_kwh": 0.34,
+        "source": "BMF/Destatis",
+    },
+}
+APP_VERSION = "1.2.0"
 
 DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
 <html lang="de">
@@ -50,12 +76,16 @@ DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
     .col { display: table-cell; width: 50%; vertical-align: top; }
     .right { text-align: right; }
     .date-line { margin-top: 24px; margin-bottom: 30px; }
-    .period { margin: 26px 0 26px; font-weight: bold; font-size: 11pt; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 9.2pt; table-layout: fixed; }
+    .period { margin: 26px 0 22px; font-weight: bold; font-size: 11pt; }
+    .vehicle-section { margin: 0 0 22px; page-break-inside: avoid; }
+    .vehicle-title { margin: 12px 0 7px; font-size: 10.5pt; }
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 9.2pt; table-layout: fixed; }
     th, td { border: 1px solid #666; padding: 5px 6px; vertical-align: top; word-wrap: break-word; }
     th { background: #efefef; text-align: left; }
+    .vehicle-total { margin: 7px 0 0; font-size: 9.4pt; }
     .summary { margin-top: 14px; }
     .summary p { margin: 4px 0; }
+    .price-info { margin-top: 12px; padding-top: 8px; border-top: 1px solid #bbb; }
     .bank { margin-top: 20px; }
     .closing { margin-top: 24px; }
     .signature { margin-top: 10px; }
@@ -80,25 +110,43 @@ DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
 
   <div class="period">{{ billing_mode_label }} – {{ period_label }}</div>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Datum</th>
-        <th>Startzeit</th>
-        <th>Endzeit</th>
-        <th>Fahrzeug</th>
-        <th>Geladene kWh</th>
-        <th>Kosten (€)</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{ rows_html|safe }}
-    </tbody>
-  </table>
+  {% for vehicle_group in vehicle_groups %}
+  <div class="vehicle-section">
+    <div class="vehicle-title"><strong>Fahrzeug: {{ vehicle_group.vehicle }}</strong></div>
+    <table>
+      <thead>
+        <tr>
+          <th>Datum</th>
+          <th>Startzeit</th>
+          <th>Endzeit</th>
+          <th>Geladene kWh</th>
+          <th>Kosten (€)</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for charge in vehicle_group.sessions %}
+        <tr>
+          <td>{{ charge.date }}</td>
+          <td>{{ charge.start_time }}</td>
+          <td>{{ charge.end_time }}</td>
+          <td>{{ charge.energy_kwh_formatted }}</td>
+          <td>{{ charge.cost_eur }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="vehicle-total"><strong>Zwischensumme {{ vehicle_group.vehicle }}:</strong> {{ vehicle_group.total_energy_kwh }} · {{ vehicle_group.total_cost_eur }}</p>
+  </div>
+  {% endfor %}
 
   <div class="summary">
     <p><strong>Gesamt geladene kWh:</strong> {{ total_energy_kwh }}</p>
     <p><strong>Gesamtkosten:</strong> {{ total_cost_eur }}</p>
+    <div class="price-info">
+      <p><strong>Zugrunde gelegter Strompreis:</strong> {{ electricity_price_eur_kwh }}</p>
+      {% if price_method_label %}<p><strong>Preisermittlung:</strong> {{ price_method_label }}</p>{% endif %}
+      {% if price_source_label %}<p><strong>Grundlage:</strong> {{ price_source_label }}</p>{% endif %}
+    </div>
   </div>
 
   <div class="bank">
@@ -301,6 +349,24 @@ def ensure_dirs():
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
+def _read_json_file(path):
+    try:
+        value = json.loads(Path(path).read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else None
+    except Exception:
+        return None
+
+def _atomic_write_json(path, value):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    payload = json.dumps(value, indent=2, ensure_ascii=False)
+    with tmp.open("w", encoding="utf-8") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp, path)
+
 def load_addon_options():
     if not OPTIONS_FILE.exists():
         return {"mqtt_host": "core-mosquitto", "mqtt_port": 1883, "mqtt_user": "", "mqtt_password": "", "mqtt_base_topic": "/evcc2pdf"}
@@ -319,31 +385,77 @@ def deep_merge(base, override):
 
 def create_backup():
     ensure_dirs()
-    if SETTINGS_FILE.exists():
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_file = BACKUP_DIR / f"settings_{ts}.json"
-        shutil.copy2(SETTINGS_FILE, backup_file)
-        backups = sorted(BACKUP_DIR.glob("settings_*.json"), reverse=True)
-        for old in backups[10:]:
+    if not SETTINGS_FILE.exists():
+        return
+    # Nur gültige Konfigurationen sichern. Eine beschädigte Datei darf kein gutes Backup verdrängen.
+    if _read_json_file(SETTINGS_FILE) is None:
+        return
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    backup_file = BACKUP_DIR / f"settings_{ts}.json"
+    shutil.copy2(SETTINGS_FILE, backup_file)
+    backups = sorted(BACKUP_DIR.glob("settings_*.json"), reverse=True)
+    for old in backups[20:]:
+        try:
+            old.unlink()
+        except Exception:
+            pass
+
+def _restore_latest_backup():
+    ensure_dirs()
+    for backup in sorted(BACKUP_DIR.glob("settings_*.json"), reverse=True):
+        data = _read_json_file(backup)
+        if data is not None:
             try:
-                old.unlink()
+                _atomic_write_json(SETTINGS_FILE, data)
+                LOGGER.warning("Einstellungen aus Backup %s wiederhergestellt.", backup.name)
             except Exception:
                 pass
+            return data
+    return None
+
+def _migrate_legacy_settings():
+    if SETTINGS_FILE.exists():
+        return None
+    for legacy in LEGACY_SETTINGS_FILES:
+        if legacy == SETTINGS_FILE or not legacy.exists():
+            continue
+        data = _read_json_file(legacy)
+        if data is None:
+            continue
+        try:
+            _atomic_write_json(SETTINGS_FILE, data)
+            LOGGER.warning("Legacy-Einstellungen von %s nach %s migriert.", legacy, SETTINGS_FILE)
+            return data
+        except Exception:
+            continue
+    return None
 
 def load_local_settings():
     ensure_dirs()
+    migrated = _migrate_legacy_settings()
+    if migrated is not None:
+        return migrated
     if SETTINGS_FILE.exists():
+        data = _read_json_file(SETTINGS_FILE)
+        if data is not None:
+            return data
+        LOGGER.error("settings.json ist beschädigt; versuche Wiederherstellung aus Backup.")
+        restored = _restore_latest_backup()
+        if restored is not None:
+            return restored
         try:
-            return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+            corrupt_copy = SETTINGS_DIR / f"settings_corrupt_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.json"
+            os.replace(SETTINGS_FILE, corrupt_copy)
+            LOGGER.error("Beschädigte settings.json wurde zur Analyse nach %s verschoben.", corrupt_copy.name)
         except Exception:
-            return None
+            pass
     return None
 
 def save_local_settings(settings, with_backup=True):
     ensure_dirs()
     if with_backup and SETTINGS_FILE.exists():
         create_backup()
-    SETTINGS_FILE.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
+    _atomic_write_json(SETTINGS_FILE, settings)
 
 def mqtt_topics(base_topic):
     bt = base_topic.rstrip("/")
@@ -377,11 +489,34 @@ def mqtt_publish(topic, payload):
         if options.get("mqtt_user"):
             client.username_pw_set(options.get("mqtt_user", ""), options.get("mqtt_password", ""))
         client.connect(options.get("mqtt_host", "core-mosquitto"), int(options.get("mqtt_port", 1883)), 15)
-        client.publish(topic, payload=payload, qos=1, retain=True)
-        client.disconnect()
+        info = client.publish(topic, payload=payload, qos=1, retain=True)
+        client.loop_start()
+        try:
+            info.wait_for_publish(timeout=5)
+        finally:
+            client.loop_stop()
+            client.disconnect()
         return True
     except Exception:
         return False
+
+def _template_source_fingerprint(raw_html):
+    normalized = "\n".join(line.rstrip() for line in str(raw_html or "").strip().splitlines())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+def _is_unmodified_legacy_default_template(entry):
+    if not isinstance(entry, dict):
+        return False
+    schema = extract_editor_schema(entry.get("content", ""))
+    if not isinstance(schema, dict):
+        return False
+    blocks = schema.get("blocks", [])
+    if not isinstance(blocks, list) or len(blocks) != 1:
+        return False
+    block = blocks[0]
+    if not isinstance(block, dict) or block.get("type") != "html":
+        return False
+    return _template_source_fingerprint(block.get("html", "")) in LEGACY_DEFAULT_SOURCE_HASHES
 
 def normalize_template_dict(templates):
     out = {}
@@ -401,6 +536,10 @@ def normalize_template_dict(templates):
     if not out:
         seed = create_seed_template_entry()
         out[seed["key"]] = seed
+    elif DEFAULT_TEMPLATE_KEY in out and _is_unmodified_legacy_default_template(out[DEFAULT_TEMPLATE_KEY]):
+        # Nur das unveränderte, mit v1.1.2 ausgelieferte Standardtemplate migrieren.
+        # Sobald ein Nutzer es editiert hat, bleibt es unangetastet.
+        out[DEFAULT_TEMPLATE_KEY] = create_seed_template_entry()
     return out
 
 def normalize_group(group):
@@ -416,6 +555,7 @@ def normalize_group(group):
         "recipient_city": "",
         "vehicles": [],
         "grid_price_override": "",
+        "grid_price_mode": "manual",
         "sender_mode": "default",
         "custom_sender": {"name": "", "email": "", "street": "", "zip": "", "city": ""},
         "html_mode": "default",
@@ -497,11 +637,11 @@ def load_settings():
         save_local_settings(mqtt_settings, with_backup=False)
         return mqtt_settings
     settings = normalize_settings(DEFAULT_SETTINGS)
-    save_local_settings(settings, with_backup=False)
-    try:
-        sync_settings_to_mqtt(settings)
-    except Exception:
-        pass
+    # Auf einem frischen System lokal anlegen, aber niemals ungeprüfte Defaults in retained MQTT
+    # publizieren. So kann ein kurzzeitig nicht erreichbarer Broker keine vorhandene Konfiguration
+    # mit Werkseinstellungen überschreiben.
+    if not SETTINGS_FILE.exists():
+        save_local_settings(settings, with_backup=False)
     return settings
 
 def save_settings(settings):
@@ -754,8 +894,10 @@ def effective_template_key(settings, group):
         if key in settings["templates"]: return key
     return settings.get("default_template_key", DEFAULT_TEMPLATE_KEY)
 
-def grid_price_for_group(settings, group):
-    override = str(group.get("grid_price_override","")).strip()
+def grid_price_for_group(settings, group, billing_year=None):
+    if billing_year is not None:
+        return price_info_for_group(settings, group, billing_year)["price_eur_kwh"]
+    override = str(group.get("grid_price_override", "")).strip()
     return parse_float(override, parse_float(settings["reporting"].get("grid_price"), 0.0)) if override else parse_float(settings["reporting"].get("grid_price"), 0.0)
 
 def format_de_number(value, decimals=2):
@@ -763,6 +905,200 @@ def format_de_number(value, decimals=2):
         return f"{float(value):,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except Exception:
         return f"{0:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _normalize_text(value):
+    return re.sub(r"\s+", " ", str(value or "").replace("\xa0", " ")).strip().lower()
+
+
+def _parse_destatis_number(value):
+    raw = str(value or "").strip().replace(" ", "")
+    if not raw or raw in {"-", ".", "...", "/"}:
+        return None
+    raw = raw.replace(".", "").replace(",", ".") if "," in raw else raw
+    try:
+        number = float(raw)
+    except Exception:
+        return None
+    # GENESIS liefert die Tabelle üblicherweise in EUR/kWh (z. B. 0,3436).
+    # Falls eine Quelle Cent/kWh liefert, normalisieren wir auf EUR/kWh.
+    if number > 2:
+        number /= 100.0
+    if 0 < number < 2:
+        return number
+    return None
+
+
+def _extract_destatis_rate_from_csv(csv_text, source_year):
+    rows = list(csv.reader(StringIO(csv_text), delimiter=";"))
+    target_class = "5 000 bis unter 15 000"
+    target_price = "durchschnittspreise inkl"
+
+    # Flat-File-CSV: Spalten über ihre Überschriften erkennen.
+    for header_index, row in enumerate(rows[:40]):
+        normalized = [_normalize_text(c) for c in row]
+        joined = " | ".join(normalized)
+        if "halbjahr" not in joined or "jahresverbrauch" not in joined:
+            continue
+        def find_col(*needles):
+            for idx, cell in enumerate(normalized):
+                if all(n in cell for n in needles):
+                    return idx
+            return None
+        year_col = find_col("jahr")
+        half_col = find_col("halbjahr")
+        class_col = find_col("jahresverbrauch")
+        price_col = find_col("preisart")
+        value_col = find_col("wert")
+        if value_col is None:
+            value_col = len(row) - 1
+        if class_col is None or half_col is None:
+            continue
+        for data_row in rows[header_index + 1:]:
+            cells = [_normalize_text(c) for c in data_row]
+            if len(cells) <= max(class_col, half_col, value_col):
+                continue
+            full = " | ".join(cells)
+            if str(source_year) not in full:
+                continue
+            if "1. halbjahr" not in cells[half_col] and "1 . halbjahr" not in cells[half_col]:
+                continue
+            if target_class not in cells[class_col]:
+                continue
+            if price_col is not None and price_col < len(cells) and target_price not in cells[price_col]:
+                continue
+            value = _parse_destatis_number(data_row[value_col])
+            if value is not None:
+                return value
+
+    # Klassische GENESIS-Pivottabelle: Zielzeile finden und Spaltenkontext aus den
+    # darüberliegenden Kopfzeilen zusammensetzen.
+    for row_index, row in enumerate(rows):
+        normalized = [_normalize_text(c) for c in row]
+        if not any(target_class in cell for cell in normalized):
+            continue
+        preceding_rows = rows[max(0, row_index - 16):row_index]
+        global_context = " | ".join(_normalize_text(c) for r in preceding_rows for c in r)
+        if target_price not in global_context:
+            # Manche Exporte wiederholen die Preisart rechts neben der Klasse.
+            if target_price not in " | ".join(normalized):
+                continue
+        for col_index, cell in enumerate(row):
+            value = _parse_destatis_number(cell)
+            if value is None:
+                continue
+            column_context_parts = []
+            for prev in preceding_rows:
+                if col_index < len(prev):
+                    column_context_parts.append(_normalize_text(prev[col_index]))
+                if prev:
+                    column_context_parts.append(_normalize_text(prev[0]))
+            column_context = " | ".join(column_context_parts)
+            if str(source_year) in column_context and ("1. halbjahr" in column_context or "1 . halbjahr" in column_context):
+                return value
+    return None
+
+
+def load_bmf_rate_cache():
+    data = _read_json_file(BMF_PRICE_CACHE_FILE)
+    return data if isinstance(data, dict) else {}
+
+
+def save_bmf_rate_cache(cache):
+    try:
+        _atomic_write_json(BMF_PRICE_CACHE_FILE, cache)
+    except Exception as err:
+        LOGGER.warning("BMF-Preis-Cache konnte nicht gespeichert werden: %s", err)
+
+
+def _rate_info_from_raw(billing_year, raw_eur_kwh, source="Destatis"):
+    rate = math.floor(float(raw_eur_kwh) * 100 + 1e-9) / 100.0
+    return {
+        "billing_year": int(billing_year),
+        "source_year": int(billing_year) - 1,
+        "raw_eur_kwh": float(raw_eur_kwh),
+        "rate_eur_kwh": rate,
+        "source": source,
+    }
+
+
+def fetch_bmf_rate_from_destatis(billing_year):
+    billing_year = int(billing_year)
+    source_year = billing_year - 1
+    response = requests.get(DESTatis_CSV_URL, timeout=20, headers={"User-Agent": f"EVCC-to-PDF/{APP_VERSION}"})
+    response.raise_for_status()
+    content = response.content
+    decoded = None
+    for encoding in ("utf-8-sig", "cp1252", "latin-1"):
+        try:
+            decoded = content.decode(encoding)
+            break
+        except Exception:
+            continue
+    if decoded is None:
+        raise ValueError("Destatis-CSV konnte nicht dekodiert werden.")
+    raw = _extract_destatis_rate_from_csv(decoded, source_year)
+    if raw is None:
+        raise ValueError(f"Destatis-Wert für 1. Halbjahr {source_year} konnte nicht ermittelt werden.")
+    return _rate_info_from_raw(billing_year, raw, source="Destatis")
+
+
+def resolve_bmf_rate(billing_year):
+    billing_year = int(billing_year)
+    if billing_year < 2026 or billing_year > 2030:
+        raise ValueError("Die BMF-Strompreispauschale ist nach aktueller Regelung für 2026 bis 2030 vorgesehen.")
+
+    catalog = BMF_RATE_CATALOG.get(billing_year)
+    if catalog:
+        return deepcopy(catalog)
+
+    cache = load_bmf_rate_cache()
+    cached = cache.get(str(billing_year))
+    if isinstance(cached, dict) and parse_float(cached.get("rate_eur_kwh"), 0) > 0:
+        return cached
+
+    try:
+        info = fetch_bmf_rate_from_destatis(billing_year)
+        cache[str(billing_year)] = info
+        save_bmf_rate_cache(cache)
+        return info
+    except Exception as err:
+        raise ValueError(
+            f"BMF-Strompreispauschale für {billing_year} konnte noch nicht automatisch ermittelt werden: {err}"
+        ) from err
+
+
+def price_info_for_group(settings, group, billing_year):
+    mode = str(group.get("grid_price_mode", "manual") or "manual").strip().lower()
+    if mode == "bmf":
+        info = resolve_bmf_rate(billing_year)
+        price = float(info["rate_eur_kwh"])
+        source_year = int(info["source_year"])
+        return {
+            "mode": "bmf",
+            "price_eur_kwh": price,
+            "price_eur_kwh_formatted": format_de_number(price, 2),
+            "price_eur_kwh_label": f"{format_de_number(price, 2)} €/kWh",
+            "price_method_label": f"BMF-Strompreispauschale {billing_year}",
+            "price_source_label": f"Destatis, Statistik {DESTatis_TABLE_CODE}, 1. Halbjahr {source_year}",
+            "price_source_year": source_year,
+            "price_raw_eur_kwh": float(info.get("raw_eur_kwh", price)),
+        }
+
+    override = str(group.get("grid_price_override", "")).strip()
+    default_price = parse_float(settings.get("reporting", {}).get("grid_price"), 0.0)
+    price = parse_float(override, default_price) if override else default_price
+    return {
+        "mode": "manual",
+        "price_eur_kwh": price,
+        "price_eur_kwh_formatted": format_de_number(price, 4 if round(price, 2) != price else 2),
+        "price_eur_kwh_label": f"{format_de_number(price, 4 if round(price, 2) != price else 2)} €/kWh",
+        # Gewünscht: Bei manueller Preiswahl keine Zeile „Preisermittlung“ ausgeben.
+        "price_method_label": "",
+        "price_source_label": "",
+        "price_source_year": None,
+        "price_raw_eur_kwh": price,
+    }
 
 
 def generate_rows_and_summary(settings, group, mode=None, manual_year=None, manual_month=None):
@@ -828,7 +1164,8 @@ def generate_rows_and_summary(settings, group, mode=None, manual_year=None, manu
         raise ValueError("Keine Ladevorgänge für den gewählten Zeitraum gefunden.")
 
     df["chargedEnergy"] = pd.to_numeric(df["chargedEnergy"], errors="coerce").fillna(0)
-    df["price"] = (df["chargedEnergy"] * grid_price_for_group(settings, group)).round(2)
+    price_info = price_info_for_group(settings, group, start.year)
+    df["price"] = (df["chargedEnergy"] * price_info["price_eur_kwh"]).round(2)
 
     end_col = next((c for c in ("finished", "updated", "end") if c in df.columns), None)
     if end_col:
@@ -863,11 +1200,29 @@ def generate_rows_and_summary(settings, group, mode=None, manual_year=None, manu
             f"<tr><td>{row_data['date']}</td><td>{row_data['start_time']}</td><td>{row_data['end_time']}</td><td>{vehicle}</td><td>{row_data['energy_kwh_formatted']}</td><td>{row_data['cost_eur']}</td></tr>"
         )
 
+    vehicle_groups = []
+    grouped = {}
+    for item in session_rows:
+        vehicle_name = item.get("vehicle") or "Ohne Fahrzeugzuordnung"
+        grouped.setdefault(vehicle_name, []).append(item)
+    for vehicle_name, items in grouped.items():
+        vehicle_energy = sum(float(item.get("energy_kwh", 0) or 0) for item in items)
+        vehicle_cost = sum(float(item.get("cost", 0) or 0) for item in items)
+        vehicle_groups.append({
+            "vehicle": vehicle_name,
+            "sessions": items,
+            "total_energy": vehicle_energy,
+            "total_cost": vehicle_cost,
+            "total_energy_kwh": f"{format_de_number(vehicle_energy)} kWh",
+            "total_cost_eur": f"{format_de_number(vehicle_cost)} €",
+        })
+
     total_energy = float(df['chargedEnergy'].sum())
     total_cost = float(df['price'].sum())
     return {
         "rows_html": "\n".join(rows_html),
         "sessions": session_rows,
+        "vehicle_groups": vehicle_groups,
         "total_energy": total_energy,
         "total_cost": total_cost,
         "total_energy_kwh": f"{format_de_number(total_energy)} kWh",
@@ -879,6 +1234,7 @@ def generate_rows_and_summary(settings, group, mode=None, manual_year=None, manu
         "period_start_str": start.strftime('%d.%m.%Y'),
         "period_end_str": end.strftime('%d.%m.%Y'),
         "billing_mode": mode,
+        **price_info,
     }
 
 def render_html(settings, group, mode=None, manual_year=None, manual_month=None):
@@ -902,10 +1258,17 @@ def render_html(settings, group, mode=None, manual_year=None, manual_month=None)
         "period_end": summary["period_end_str"],
         "rows_html": summary["rows_html"],
         "sessions": summary["sessions"],
+        "vehicle_groups": summary["vehicle_groups"],
         "total_energy_kwh": summary["total_energy_kwh"],
         "total_cost_eur": summary["total_cost_eur"],
         "total_energy": summary["total_energy_formatted"],
         "total_cost": summary["total_cost_formatted"],
+        "electricity_price": summary["price_eur_kwh_formatted"],
+        "electricity_price_eur_kwh": summary["price_eur_kwh_label"],
+        "price_mode": summary["mode"],
+        "price_method_label": summary["price_method_label"],
+        "price_source_label": summary["price_source_label"],
+        "price_source_year": summary["price_source_year"],
         "email_body": email_body,
         "sender_name": sender.get("name", ""),
         "sender_street": sender.get("street", ""),
@@ -1092,6 +1455,7 @@ def groups_page():
         group["recipient_city"] = request.form.get("recipient_city","").strip()
         group["vehicles"] = [v for v in request.form.getlist("vehicles") if v.strip()]
         group["grid_price_override"] = request.form.get("grid_price_override","").strip()
+        group["grid_price_mode"] = "bmf" if parse_bool(request.form.get("grid_price_bmf")) else "manual"
         group["sender_mode"] = request.form.get("sender_mode","default").strip()
         group["custom_sender"] = {
             "name": request.form.get("custom_sender_name","").strip(),
@@ -1130,7 +1494,11 @@ def groups_page():
     edit_id = request.args.get("edit","").strip()
     if edit_id:
         edit_group = find_group(settings, edit_id)
-    return render_template("groups.html", settings=settings, edit_group=edit_group)
+    try:
+        current_bmf = resolve_bmf_rate(datetime.today().year)
+    except Exception:
+        current_bmf = None
+    return render_template("groups.html", settings=settings, edit_group=edit_group, current_bmf=current_bmf)
 
 
 
