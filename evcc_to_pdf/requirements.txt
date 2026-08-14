@@ -4,3 +4,4 @@ pandas
 weasyprint
 jinja2
 paho-mqtt
+websocket-client

@@ -1,29 +1,39 @@
 {% extends "layout.html" %}
 {% block content %}
+<section class="card hero-card">
+  <div class="hero-grid">
+    <div>
+      <span class="eyebrow">EVCC · Home Assistant · Shelly · Klima · IT</span>
+      <h2>Modulare Energieabrechnung für E-Mobilität & Homeoffice</h2>
+      <p class="muted">Verbrauchsquellen zu Gruppen zusammenfassen, Stromkosten für einen Zeitraum ermitteln, als PDF ausgeben und automatisch versenden.</p>
+      <div class="actions">
+        <a class="button" href="{{ ingress_path }}/groups">Gruppen konfigurieren</a>
+        <a class="button secondary" href="{{ ingress_path }}/report">Abrechnung erstellen</a>
+      </div>
+    </div>
+    <img class="hero-brand-image" src="{{ ingress_path }}/static/logo.png" alt="EVCC to PDF Homeoffice Logo">
+  </div>
+</section>
 <section class="card">
   <h2>Status</h2>
   <ul class="stats">
-    <li><strong>Gespeicherte Assets:</strong> {{ settings.cached_assets|length }}</li>
-    <li><strong>Gruppen:</strong> {{ settings.groups|length }}</li>
+    <li><strong>EVCC-Fahrzeuge:</strong> {{ settings.cached_assets|length }}</li>
+    <li><strong>Abrechnungsgruppen:</strong> {{ settings.groups|length }}</li>
+    <li><strong>EVCC-Gruppen:</strong> {{ settings.groups|selectattr('group_type','equalto','evcc')|list|length }}</li>
+    <li><strong>Home-Assistant-Gruppen:</strong> {{ settings.groups|selectattr('group_type','equalto','homeassistant')|list|length }}</li>
     <li><strong>Templates:</strong> {{ settings.templates|length }}</li>
     <li><strong>Scheduler:</strong> {{ "aktiv" if settings.scheduler.enabled else "inaktiv" }}</li>
-    <li><strong>EVCC URL:</strong> {{ settings.evcc.url or "nicht gesetzt" }}</li>
     <li><strong>Storage:</strong> lokal führend, MQTT Spiegel</li>
   </ul>
-  <form method="post" action="{{ ingress_path }}/refresh_assets">
-    <button type="submit">Fahrzeuge aktualisieren</button>
-  </form>
+  <div class="actions">
+    <form method="post" action="{{ ingress_path }}/refresh_assets"><button type="submit">EVCC aktualisieren</button></form>
+    <form method="post" action="{{ ingress_path }}/refresh_ha_entities"><button type="submit" class="button secondary">HA-Entitäten aktualisieren</button></form>
+  </div>
 </section>
 <section class="card">
-  <h2>Geladene Fahrzeuge / Karten</h2>
+  <h2>EVCC-Fahrzeuge</h2>
   {% if settings.cached_assets %}
-    <div class="chips">
-      {% for vehicle in settings.cached_assets %}
-        <span class="chip">{{ vehicle }}</span>
-      {% endfor %}
-    </div>
-  {% else %}
-    <p>Noch keine Einträge geladen.</p>
-  {% endif %}
+    <div class="chips">{% for vehicle in settings.cached_assets %}<span class="chip">{{ vehicle }}</span>{% endfor %}</div>
+  {% else %}<p>Noch keine Fahrzeuge geladen.</p>{% endif %}
 </section>
 {% endblock %}

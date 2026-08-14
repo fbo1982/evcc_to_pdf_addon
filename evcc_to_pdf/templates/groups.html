@@ -3,17 +3,30 @@
 <div class="grid two-col">
   <section class="card">
     <div class="card-head">
-      <h2>Fahrzeuggruppen</h2>
-      <form method="post" action="{{ ingress_path }}/refresh_assets"><button type="submit">Fahrzeuge aktualisieren</button></form>
+      <div>
+        <h2>Abrechnungsgruppen</h2>
+        <p class="muted">EVCC-Fahrzeuge und Home-Assistant-Verbraucher lassen sich als getrennte, modulare Gruppen abrechnen.</p>
+      </div>
+      <div class="actions compact-actions">
+        <form method="post" action="{{ ingress_path }}/refresh_assets"><button type="submit" class="button secondary">EVCC aktualisieren</button></form>
+        <form method="post" action="{{ ingress_path }}/refresh_ha_entities"><button type="submit" class="button secondary">HA-Entitäten aktualisieren</button></form>
+      </div>
     </div>
     {% if settings.groups %}
       <div class="group-list">
       {% for group in settings.groups %}
         <div class="group-item">
           <div>
-            <strong>{{ group.name }}</strong><br>
-            <span class="muted">{{ group.recipient_company }} · {{ group.recipient_email }}</span><br>
-            <span class="muted">{{ group.vehicles|join(", ") }}</span><br>
+            <div class="group-title-line">
+              <strong>{{ group.name }}</strong>
+              <span class="type-badge {{ 'ha' if group.group_type == 'homeassistant' else 'evcc' }}">{{ 'Home Assistant' if group.group_type == 'homeassistant' else 'EVCC' }}</span>
+            </div>
+            <span class="muted">{{ group.recipient_company or group.recipient_name }}{% if group.recipient_email %} · {{ group.recipient_email }}{% endif %}</span><br>
+            {% if group.group_type == 'homeassistant' %}
+              <span class="muted">{{ group.ha_sources|length }} Entität(en) · {{ group.ha_sources|selectattr('include_in_total')|list|length }} in Gruppensumme</span><br>
+            {% else %}
+              <span class="muted">{{ group.vehicles|join(", ") if group.vehicles else "Alle Fahrzeuge" }}</span><br>
+            {% endif %}
             <span class="muted">{{ "aktiv" if group.active else "inaktiv" }}</span>
           </div>
           <div class="group-actions">
@@ -34,27 +47,89 @@
 
   <section class="card">
     <h2>{{ "Gruppe bearbeiten" if edit_group else "Neue Gruppe" }}</h2>
-    <form method="post" action="{{ ingress_path }}/groups" class="stack">
+    <form id="group-form" method="post" action="{{ ingress_path }}/groups" class="stack">
       <input type="hidden" name="group_id" value="{{ edit_group.id if edit_group else '' }}">
+      <input type="hidden" id="ha_sources_json" name="ha_sources_json" value="[]">
       <label class="checkbox"><input type="checkbox" name="active" {% if edit_group is none or edit_group.active %}checked{% endif %}><span>Aktiv</span></label>
 
-      <label><span>Gruppenname</span><input type="text" name="name" value="{{ edit_group.name if edit_group else '' }}" required></label>
-      <label><span>Empfängername</span><input type="text" name="recipient_name" value="{{ edit_group.recipient_name if edit_group else '' }}"></label>
-      <label><span>Firma</span><input type="text" name="recipient_company" value="{{ edit_group.recipient_company if edit_group else '' }}"></label>
-      <label><span>E-Mail</span><input type="email" name="recipient_email" value="{{ edit_group.recipient_email if edit_group else '' }}"></label>
-      <label><span>Straße</span><input type="text" name="recipient_street" value="{{ edit_group.recipient_street if edit_group else '' }}"></label>
-      <label><span>PLZ</span><input type="text" name="recipient_zip" value="{{ edit_group.recipient_zip if edit_group else '' }}"></label>
-      <label><span>Ort</span><input type="text" name="recipient_city" value="{{ edit_group.recipient_city if edit_group else '' }}"></label>
-      <div class="subblock price-mode-block">
-        <label class="checkbox">
-          <input type="checkbox" id="grid_price_bmf" name="grid_price_bmf" onchange="toggleGridPriceMode()" {% if edit_group and edit_group.grid_price_mode == 'bmf' %}checked{% endif %}>
-          <span>BMF-Strompreispauschale automatisch ermitteln</span>
+      <div class="form-grid">
+        <label><span>Gruppenname</span><input type="text" name="name" value="{{ edit_group.name if edit_group else '' }}" placeholder="z. B. Homeoffice, Klimaanlage, E-Fahrzeuge" required></label>
+        <label><span>Gruppentyp</span>
+          <select id="group_type" name="group_type" onchange="toggleGroupType()">
+            <option value="evcc" {% if not edit_group or edit_group.group_type == 'evcc' %}selected{% endif %}>EVCC – Fahrzeuge / Ladevorgänge</option>
+            <option value="homeassistant" {% if edit_group and edit_group.group_type == 'homeassistant' %}selected{% endif %}>Home Assistant – Energie / Leistung / Laufzeit</option>
+          </select>
         </label>
-        <p class="muted small">Verwendet für das jeweilige Abrechnungsjahr den Destatis-Gesamtstrompreis (Statistik 61243-0001) aus dem 1. Halbjahr des Vorjahres für 5.000 bis unter 15.000 kWh und rundet ihn auf volle Cent ab.</p>
-        {% if current_bmf %}
-          <p class="price-preview"><strong>Aktuell für {{ current_bmf.billing_year }}:</strong> {{ "%.2f"|format(current_bmf.rate_eur_kwh)|replace(".", ",") }} €/kWh</p>
+      </div>
+
+      <div class="subblock">
+        <h3>Empfänger</h3>
+        <div class="form-grid">
+          <label><span>Empfängername</span><input type="text" name="recipient_name" value="{{ edit_group.recipient_name if edit_group else '' }}"></label>
+          <label><span>Firma</span><input type="text" name="recipient_company" value="{{ edit_group.recipient_company if edit_group else '' }}"></label>
+          <label><span>E-Mail</span><input type="email" name="recipient_email" value="{{ edit_group.recipient_email if edit_group else '' }}"></label>
+          <label><span>Straße</span><input type="text" name="recipient_street" value="{{ edit_group.recipient_street if edit_group else '' }}"></label>
+          <label><span>PLZ</span><input type="text" name="recipient_zip" value="{{ edit_group.recipient_zip if edit_group else '' }}"></label>
+          <label><span>Ort</span><input type="text" name="recipient_city" value="{{ edit_group.recipient_city if edit_group else '' }}"></label>
+        </div>
+      </div>
+
+      <div class="subblock price-mode-block">
+        <h3>Strompreis</h3>
+        <div id="bmf_price_block">
+          <label class="checkbox">
+            <input type="checkbox" id="grid_price_bmf" name="grid_price_bmf" onchange="toggleGridPriceMode()" {% if edit_group and edit_group.grid_price_mode == 'bmf' %}checked{% endif %}>
+            <span>BMF-Strompreispauschale automatisch ermitteln</span>
+          </label>
+          <p class="muted small">Nur für EVCC-Ladeabrechnungen. Der Wert wird nach Abrechnungsjahr aus der BMF-/Destatis-Regel ermittelt.</p>
+          {% if current_bmf %}
+            <p class="price-preview"><strong>Aktuell für {{ current_bmf.billing_year }}:</strong> {{ "%.2f"|format(current_bmf.rate_eur_kwh)|replace(".", ",") }} €/kWh</p>
+          {% endif %}
+        </div>
+        <label id="manual_grid_price_label"><span>Preis-Override €/kWh</span><input id="grid_price_override" type="text" name="grid_price_override" value="{{ edit_group.grid_price_override if edit_group else '' }}" placeholder="z. B. 0,34"></label>
+        <p class="muted small">Bei Home-Assistant-Gruppen wird immer der manuelle Gruppenpreis verwendet. Bleibt das Feld leer, gilt der Standard-Netzstrompreis aus den Einstellungen.</p>
+      </div>
+
+      <div id="evcc_source_block" class="subblock">
+        <div class="card-head">
+          <div>
+            <h3>EVCC-Fahrzeuge</h3>
+            <p class="muted small">Ohne Auswahl werden alle gefundenen Fahrzeuge berücksichtigt.</p>
+          </div>
+        </div>
+        {% if settings.cached_assets %}
+          <div class="checkbox-grid">
+            {% for item in settings.cached_assets %}
+              <label class="checkbox"><input type="checkbox" name="vehicles" value="{{ item }}" {% if edit_group and item in edit_group.vehicles %}checked{% endif %}><span>{{ item }}</span></label>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="muted">Noch keine EVCC-Fahrzeuge geladen. Links oben „EVCC aktualisieren“ verwenden.</p>
         {% endif %}
-        <label id="manual_grid_price_label"><span>Preis-Override €/kWh</span><input id="grid_price_override" type="text" name="grid_price_override" value="{{ edit_group.grid_price_override if edit_group else '' }}"></label>
+      </div>
+
+      <div id="ha_source_block" class="subblock">
+        <div class="card-head">
+          <div>
+            <h3>Home-Assistant-Quellen</h3>
+            <p class="muted small">Energiezähler werden direkt ausgewertet, Leistungssensoren über den Zeitraum integriert. Climate-/Switch-Entitäten können optional über Laufzeit × Nennleistung geschätzt werden.</p>
+          </div>
+        </div>
+
+        {% if ha_entities_updated %}<p class="muted small">Entitäten-Cache: {{ ha_entities_updated }}</p>{% endif %}
+        <div class="ha-add-row">
+          <label><span>Entität suchen</span><input id="ha_entity_filter" type="search" placeholder="Shelly, Server, Klima, sensor..." oninput="renderHaCandidateOptions()"></label>
+          <label><span>Entität</span><select id="ha_entity_select"></select></label>
+          <button type="button" onclick="addHaSource()">Hinzufügen</button>
+        </div>
+        {% if not ha_entities %}
+          <p class="muted">Noch keine geeigneten Home-Assistant-Entitäten geladen. Links oben „HA-Entitäten aktualisieren“ verwenden. Das Add-on benötigt dafür Home-Assistant-API-Zugriff.</p>
+        {% endif %}
+
+        <div class="double-count-warning">
+          <strong>Doppelzählung vermeiden:</strong> Wenn z. B. „Phase 1“ bereits den 3D-Drucker enthält, kann der Shelly Plug des Druckers als Detail angezeigt, aber aus der Gruppensumme ausgeschlossen werden.
+        </div>
+        <div id="ha_sources_list" class="ha-source-list"></div>
       </div>
 
       <label><span>Absender</span>
@@ -64,24 +139,28 @@
         </select>
       </label>
       <div id="sender_block" class="subblock" style="{% if not edit_group or edit_group.sender_mode != 'custom' %}display:none{% endif %}">
-        <label><span>Name</span><input type="text" name="custom_sender_name" value="{{ edit_group.custom_sender.name if edit_group else '' }}"></label>
-        <label><span>E-Mail</span><input type="text" name="custom_sender_email" value="{{ edit_group.custom_sender.email if edit_group else '' }}"></label>
-        <label><span>Straße</span><input type="text" name="custom_sender_street" value="{{ edit_group.custom_sender.street if edit_group else '' }}"></label>
-        <label><span>PLZ</span><input type="text" name="custom_sender_zip" value="{{ edit_group.custom_sender.zip if edit_group else '' }}"></label>
-        <label><span>Ort</span><input type="text" name="custom_sender_city" value="{{ edit_group.custom_sender.city if edit_group else '' }}"></label>
+        <div class="form-grid">
+          <label><span>Name</span><input type="text" name="custom_sender_name" value="{{ edit_group.custom_sender.name if edit_group else '' }}"></label>
+          <label><span>E-Mail</span><input type="email" name="custom_sender_email" value="{{ edit_group.custom_sender.email if edit_group else '' }}"></label>
+          <label><span>Straße</span><input type="text" name="custom_sender_street" value="{{ edit_group.custom_sender.street if edit_group else '' }}"></label>
+          <label><span>PLZ</span><input type="text" name="custom_sender_zip" value="{{ edit_group.custom_sender.zip if edit_group else '' }}"></label>
+          <label><span>Ort</span><input type="text" name="custom_sender_city" value="{{ edit_group.custom_sender.city if edit_group else '' }}"></label>
+        </div>
       </div>
 
       <label><span>Bankverbindung</span>
         <select id="bank_mode" name="bank_mode" onchange="toggleSection('bank_mode','custom','bank_block')">
           <option value="default" {% if not edit_group or edit_group.bank_mode == 'default' %}selected{% endif %}>Standard</option>
-          <option value="custom" {% if edit_group and edit_group.bank_mode == 'custom' %}selected{% endif %}>Individuell</option>
+          <option value="custom" {% if edit_group and edit_group.bank_mode == 'custom' %}selected{% endif %}>Gruppenbezogen</option>
         </select>
       </label>
       <div id="bank_block" class="subblock" style="{% if not edit_group or edit_group.bank_mode != 'custom' %}display:none{% endif %}">
-        <label><span>Empfänger</span><input type="text" name="custom_bank_recipient" value="{{ edit_group.custom_bank.recipient if edit_group else '' }}"></label>
-        <label><span>IBAN</span><input type="text" name="custom_bank_iban" value="{{ edit_group.custom_bank.iban if edit_group else '' }}"></label>
-        <label><span>BIC</span><input type="text" name="custom_bank_bic" value="{{ edit_group.custom_bank.bic if edit_group else '' }}"></label>
-        <label><span>Kreditinstitut</span><input type="text" name="custom_bank_institute" value="{{ edit_group.custom_bank.institute if edit_group else '' }}"></label>
+        <div class="form-grid">
+          <label><span>Empfänger</span><input type="text" name="custom_bank_recipient" value="{{ edit_group.custom_bank.recipient if edit_group else '' }}"></label>
+          <label><span>IBAN</span><input type="text" name="custom_bank_iban" value="{{ edit_group.custom_bank.iban if edit_group else '' }}"></label>
+          <label><span>BIC</span><input type="text" name="custom_bank_bic" value="{{ edit_group.custom_bank.bic if edit_group else '' }}"></label>
+          <label><span>Kreditinstitut</span><input type="text" name="custom_bank_institute" value="{{ edit_group.custom_bank.institute if edit_group else '' }}"></label>
+        </div>
       </div>
 
       <label><span>HTML</span>
@@ -94,11 +173,7 @@
         <label><span>HTML Template</span>
           <select name="selected_template_key">
             {% for key, tpl in settings.templates.items() %}
-              {% if key == settings.default_template_key %}
-                <option value="{{ key }}" {% if edit_group and edit_group.selected_template_key == key %}selected{% endif %}>{{ tpl.label }} (Default)</option>
-              {% else %}
-                <option value="{{ key }}" {% if edit_group and edit_group.selected_template_key == key %}selected{% endif %}>{{ tpl.label }}</option>
-              {% endif %}
+              <option value="{{ key }}" {% if edit_group and edit_group.selected_template_key == key %}selected{% endif %}>{{ tpl.label }}{% if key == settings.default_template_key %} (Default){% endif %}</option>
             {% endfor %}
           </select>
         </label>
@@ -125,19 +200,6 @@
         <div id="email_block" class="subblock" style="{% if not edit_group or edit_group.email_body_mode != 'custom' %}display:none{% endif %}">
           <label><span>Gruppenbezogener E-Mail-Inhalt</span><textarea name="custom_email_body" rows="6">{{ edit_group.custom_email_body if edit_group else '' }}</textarea></label>
         </div>
-        <details class="info-box">
-          <summary>Platzhalter für E-Mail-Betreff und E-Mail-Inhalt</summary>
-          <div class="info-box-body">
-            <div class="info-grid">
-              <div><code>{% raw %}{{period_label}}{% endraw %}</code><p>Formatierter Abrechnungszeitraum, z. B. 03.2026 oder Q1 2026.</p></div>
-              <div><code>{% raw %}{{period_start}}{% endraw %}</code><p>Startdatum des Abrechnungszeitraums.</p></div>
-              <div><code>{% raw %}{{period_end}}{% endraw %}</code><p>Enddatum des Abrechnungszeitraums.</p></div>
-              <div><code>{% raw %}{{period_month}}{% endraw %}</code><p>Monat des ausgewählten Zeitraums, z. B. 03.</p></div>
-              <div><code>{% raw %}{{period_year}}{% endraw %}</code><p>Jahr des ausgewählten Zeitraums, z. B. 2026.</p></div>
-              <div><code>{% raw %}{{billing_mode_label}}{% endraw %}</code><p>Bezeichnung des Abrechnungsmodus, z. B. Monatlich oder Quartal.</p></div>
-            </div>
-          </div>
-        </details>
       </div>
 
       <label><span>Abrechnungsmodus</span>
@@ -158,34 +220,130 @@
       </div>
 
       <label class="checkbox"><input type="checkbox" name="sender_copy_enabled" {% if edit_group and edit_group.sender_copy_enabled %}checked{% endif %}><span>Absender soll Kopie erhalten</span></label>
-
-      <fieldset>
-        <legend>Assets</legend>
-        {% if settings.cached_assets %}
-          <div class="checkbox-grid">
-            {% for item in settings.cached_assets %}
-              <label class="checkbox"><input type="checkbox" name="vehicles" value="{{ item }}" {% if edit_group and item in edit_group.vehicles %}checked{% endif %}><span>{{ item }}</span></label>
-            {% endfor %}
-          </div>
-        {% else %}
-          <p class="muted">Noch keine Assets geladen.</p>
-        {% endif %}
-      </fieldset>
-
       <div class="actions"><button type="submit">{{ "Aktualisieren" if edit_group else "Anlegen" }}</button></div>
     </form>
   </section>
 </div>
+
 <script>
+const haCandidates = {{ ha_entities|tojson }};
+let haSources = {{ (edit_group.ha_sources if edit_group else [])|tojson }};
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+}
+
+function kindLabel(kind) {
+  return ({energy:'Energie', power:'Leistung', runtime:'Laufzeit'})[kind] || kind || 'Auto';
+}
+
+function renderHaCandidateOptions() {
+  const select = document.getElementById('ha_entity_select');
+  const filter = (document.getElementById('ha_entity_filter')?.value || '').toLowerCase();
+  if (!select) return;
+  const selectedIds = new Set(haSources.map(s => s.entity_id));
+  const rows = haCandidates.filter(item => !selectedIds.has(item.entity_id) && (!filter || `${item.label} ${item.entity_id} ${item.kind}`.toLowerCase().includes(filter)));
+  select.innerHTML = rows.length ? rows.map(item => `<option value="${escapeHtml(item.entity_id)}">${escapeHtml(item.label)} · ${escapeHtml(item.entity_id)} · ${escapeHtml(kindLabel(item.kind))}${item.unit ? ' · '+escapeHtml(item.unit) : ''}</option>`).join('') : '<option value="">Keine passende Entität</option>';
+}
+
+function addHaSource() {
+  const select = document.getElementById('ha_entity_select');
+  const entityId = select?.value;
+  if (!entityId) return;
+  const item = haCandidates.find(x => x.entity_id === entityId);
+  if (!item) return;
+  haSources.push({
+    entity_id: item.entity_id,
+    label: item.label,
+    mode: 'auto',
+    include_in_total: true,
+    nominal_power_w: 0,
+    unit: item.unit || '',
+    device_class: item.device_class || '',
+    state_class: item.state_class || '',
+    domain: item.domain || ''
+  });
+  renderHaSources();
+  renderHaCandidateOptions();
+}
+
+function updateHaSource(index, field, value) {
+  if (!haSources[index]) return;
+  haSources[index][field] = field === 'include_in_total' ? !!value : (field === 'nominal_power_w' ? Number(String(value).replace(',', '.')) || 0 : value);
+  syncHaSources();
+}
+
+function removeHaSource(index) {
+  haSources.splice(index, 1);
+  renderHaSources();
+  renderHaCandidateOptions();
+}
+
+function renderHaSources() {
+  const box = document.getElementById('ha_sources_list');
+  if (!box) return;
+  if (!haSources.length) {
+    box.innerHTML = '<p class="muted">Noch keine Entitäten in dieser Gruppe.</p>';
+    syncHaSources();
+    return;
+  }
+  box.innerHTML = haSources.map((src, i) => `
+    <div class="ha-source-item">
+      <div class="ha-source-head">
+        <div><strong>${escapeHtml(src.label || src.entity_id)}</strong><br><code>${escapeHtml(src.entity_id)}</code></div>
+        <button type="button" class="danger small-button" onclick="removeHaSource(${i})">Entfernen</button>
+      </div>
+      <div class="ha-source-grid">
+        <label><span>Anzeigename</span><input type="text" value="${escapeHtml(src.label || '')}" oninput="updateHaSource(${i}, 'label', this.value)"></label>
+        <label><span>Auswertung</span>
+          <select onchange="updateHaSource(${i}, 'mode', this.value)">
+            <option value="auto" ${src.mode === 'auto' ? 'selected' : ''}>Automatisch</option>
+            <option value="energy" ${src.mode === 'energy' ? 'selected' : ''}>Energiezähler (kWh/Wh)</option>
+            <option value="power" ${src.mode === 'power' ? 'selected' : ''}>Leistung integrieren (W/kW)</option>
+            <option value="runtime" ${src.mode === 'runtime' ? 'selected' : ''}>Laufzeit × Nennleistung</option>
+          </select>
+        </label>
+        <label><span>Nennleistung W (nur Laufzeit)</span><input type="number" min="0" step="1" value="${Number(src.nominal_power_w || 0)}" oninput="updateHaSource(${i}, 'nominal_power_w', this.value)"></label>
+        <label class="checkbox ha-sum-checkbox"><input type="checkbox" ${src.include_in_total !== false ? 'checked' : ''} onchange="updateHaSource(${i}, 'include_in_total', this.checked)"><span>In Gruppensumme einrechnen</span></label>
+      </div>
+    </div>
+  `).join('');
+  syncHaSources();
+}
+
+function syncHaSources() {
+  const hidden = document.getElementById('ha_sources_json');
+  if (hidden) hidden.value = JSON.stringify(haSources);
+}
+
 function toggleGridPriceMode() {
+  const groupType = document.getElementById('group_type')?.value || 'evcc';
   const checkbox = document.getElementById('grid_price_bmf');
   const input = document.getElementById('grid_price_override');
   const label = document.getElementById('manual_grid_price_label');
+  const bmfBlock = document.getElementById('bmf_price_block');
+  if (bmfBlock) bmfBlock.style.display = groupType === 'evcc' ? 'grid' : 'none';
   if (!checkbox || !input || !label) return;
-  const automatic = checkbox.checked;
+  if (groupType !== 'evcc') checkbox.checked = false;
+  const automatic = groupType === 'evcc' && checkbox.checked;
   input.readOnly = automatic;
   label.classList.toggle('field-inactive', automatic);
 }
-document.addEventListener('DOMContentLoaded', toggleGridPriceMode);
+
+function toggleGroupType() {
+  const type = document.getElementById('group_type')?.value || 'evcc';
+  const evcc = document.getElementById('evcc_source_block');
+  const ha = document.getElementById('ha_source_block');
+  if (evcc) evcc.style.display = type === 'evcc' ? 'block' : 'none';
+  if (ha) ha.style.display = type === 'homeassistant' ? 'block' : 'none';
+  toggleGridPriceMode();
+}
+
+document.getElementById('group-form')?.addEventListener('submit', syncHaSources);
+document.addEventListener('DOMContentLoaded', () => {
+  renderHaSources();
+  renderHaCandidateOptions();
+  toggleGroupType();
+});
 </script>
 {% endblock %}

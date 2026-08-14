@@ -1,26 +1,19 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/fbo1982/evcc_to_pdf_addon/main/docs/images/logo-wide.png" alt="EVCC to PDF" width="250">
-</p>
+# EVCC to PDF v1.3.0
 
-# EVCC to PDF
+Modulare Energieabrechnung für **EVCC und Home Assistant**.
 
-Automatische PDF-Abrechnung von EVCC-Ladevorgängen für zuhause geladene Firmen- und Dienstfahrzeuge.
+Mit der App können EV-Ladevorgänge sowie Home-Assistant-Verbraucher wie Shellys, Server, 3D-Drucker und Klimaanlagen gruppiert, über einen Zeitraum ausgewertet, mit einem Strompreis verrechnet und als PDF versendet werden.
 
-## Funktionen
+## Neu in v1.3.0
 
-- PDF-Abrechnungen aus EVCC
-- Gruppierung nach Fahrzeugen mit Zwischensummen
-- Manueller Strompreis oder automatische BMF-Strompreispauschale
-- Monatliche, quartalsweise, halbjährliche und jährliche Abrechnung
-- Automatischer E-Mail-Versand
-- Gruppenverwaltung und Scheduler
-- Bearbeitbare HTML-Templates mit grafischem Editor
-- Persistente Speicherung mit Backups
+- Home-Assistant-Entitäten als Abrechnungsquellen
+- frei kombinierbare Energiegruppen
+- Energiezähler, Leistungssensoren und Laufzeit-Schätzung
+- Gruppensummen mit Schutz gegen Doppelzählung
+- EVCC-Fahrzeuggruppen bleiben vollständig erhalten
+- BMF-/Destatis-Pauschale bleibt gezielt für EVCC-Gruppen verfügbar
+- neues E-Mobility-/Homeoffice-Branding
 
-## Erste Schritte
+Nach der Installation unter **Gruppen** entweder **EVCC** oder **Home Assistant** als Gruppentyp wählen. Für Home-Assistant-Gruppen zuerst **HA-Entitäten aktualisieren** und anschließend die gewünschten Quellen hinzufügen.
 
-Nach dem Start **Weboberfläche öffnen**, zuerst EVCC und optional SMTP konfigurieren, danach eine Gruppe anlegen und über **Manuell** eine Vorschau erzeugen.
-
-Die vollständige Dokumentation befindet sich im Tab **Dokumentation** bzw. in `DOCS.md`.
-
-> EVCC to PDF ist ein technisches Abrechnungswerkzeug und keine Steuer- oder Rechtsberatung.
+Ausführliche Hinweise stehen im Tab **Dokumentation** bzw. in `DOCS.md`.

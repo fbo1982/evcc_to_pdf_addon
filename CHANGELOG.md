@@ -2,6 +2,37 @@
 
 Alle relevanten Änderungen an **EVCC to PDF** werden hier versionsweise dokumentiert.
 
+## v1.3.0 – 14.08.2026
+
+### Modulare Abrechnungsgruppen
+- Gruppen besitzen jetzt einen Typ: **EVCC** oder **Home Assistant**.
+- Bestehende Gruppen werden automatisch als EVCC-Gruppen migriert und bleiben kompatibel.
+- Home-Assistant-Gruppen können beliebig viele Verbrauchsquellen enthalten.
+- Pro Quelle kann festgelegt werden, ob sie in die Gruppensumme einfließt. Dadurch lassen sich Detailzähler anzeigen, ohne sie doppelt zu summieren.
+
+### Home-Assistant-Integration
+- Direkter Zugriff auf Home Assistant Core über die offizielle interne App-API (`homeassistant_api: true`).
+- Geeignete Entitäten können aus Home Assistant geladen und in der Gruppenoberfläche ausgewählt werden.
+- Energie-Sensoren in Wh/kWh/MWh werden als Zähler ausgewertet.
+- Leistungssensoren in W/kW/MW werden über den Zeitraum zu kWh integriert.
+- Home-Assistant-Langzeitstatistiken werden bevorzugt verwendet; Recorder-History dient als Fallback.
+- Climate-/Switch-/Binary-Sensor-/Input-Boolean-Entitäten können optional über Laufzeit × Nennleistung geschätzt werden.
+- Enthaltene Quellen mit fehlender Datenbasis brechen die Abrechnung mit einer Fehlermeldung ab, statt einen unvollständigen Betrag auszugeben.
+
+### Preise & Berichte
+- Home-Assistant-Gruppen verwenden den manuellen Gruppen-/Standard-Strompreis.
+- BMF-/Destatis-Automatik bleibt auf EVCC-Gruppen begrenzt.
+- Standard-PDF unterstützt jetzt Home-Assistant-Quellen mit Entity-ID, Verbrauch, Kosten, Berechnungsmethode und Summierungsstatus.
+- EVCC-Fahrzeuggruppierung und Fahrzeug-Zwischensummen bleiben erhalten.
+- Neue Template-Kontexte: `group_name`, `group_type`, `ha_sources`.
+- Editor-Tabellenblock kann EVCC- und Home-Assistant-Zeilen darstellen.
+
+### Branding & Oberfläche
+- Neues Homeoffice-/E-Mobility-Logo mit Schreibtisch, Wallbox, Fahrzeug und Energieabrechnung.
+- App-Icon, Favicon, Store-Logo, Wide-Logo und README-Hero aktualisiert.
+- Dashboard und Gruppenverwaltung auf die modulare Energieabrechnung umgestellt.
+- Versionsnummer auf **v1.3.0** angehoben.
+
 ## v1.2.02
 
 ### Branding & Home Assistant

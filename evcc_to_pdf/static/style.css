@@ -123,3 +123,31 @@ hr { border:0; border-top:1px solid rgba(122,166,232,.28); margin:18px 0; }
   .topbar h1 { font-size:24px; }
   .brand-tagline { font-size:9px; letter-spacing:.08em; }
 }
+
+/* v1.3.0 – modulare Abrechnungsgruppen */
+.compact-actions { align-items:center; }
+.compact-actions form { margin:0; }
+.group-title-line { display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:5px; }
+.type-badge { display:inline-flex; align-items:center; border-radius:999px; padding:3px 8px; font-size:11px; font-weight:800; border:1px solid rgba(255,255,255,.22); }
+.type-badge.evcc { background:rgba(34,197,94,.14); color:#a7f3d0; }
+.type-badge.ha { background:rgba(72,199,255,.12); color:#bfeeff; }
+.ha-add-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.5fr) auto; gap:12px; align-items:end; }
+.ha-add-row button { height:52px; }
+@media (max-width:900px) { .ha-add-row { grid-template-columns:1fr; } }
+.ha-source-list { display:grid; gap:12px; margin-top:14px; }
+.ha-source-item { border:1px solid rgba(122,166,232,.28); border-radius:16px; padding:14px; background:rgba(3,18,50,.32); }
+.ha-source-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:12px; }
+.ha-source-head code { color:#8fdcff; font-size:12px; }
+.ha-source-grid { display:grid; grid-template-columns:1.2fr 1.1fr 1fr 1fr; gap:12px; align-items:end; }
+@media (max-width:1100px) { .ha-source-grid { grid-template-columns:1fr 1fr; } }
+@media (max-width:680px) { .ha-source-grid { grid-template-columns:1fr; } }
+.ha-sum-checkbox { min-height:52px; align-content:center; }
+.small-button { min-width:auto; width:auto; padding:8px 12px; border-radius:11px; }
+.double-count-warning { margin:14px 0; padding:12px 14px; border-radius:14px; background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.4); color:#fde6b0; font-size:13px; }
+#bmf_price_block { gap:12px; }
+.hero-card { overflow:hidden; }
+.hero-grid { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(260px,.6fr); align-items:center; gap:26px; }
+.hero-grid h2 { font-size:34px; line-height:1.12; margin-bottom:12px; }
+.hero-brand-image { width:100%; max-width:520px; justify-self:end; border-radius:18px; }
+.eyebrow { display:inline-block; margin-bottom:10px; color:#8fdcff; text-transform:uppercase; letter-spacing:.12em; font-size:12px; font-weight:800; }
+@media (max-width:850px) { .hero-grid { grid-template-columns:1fr; } .hero-brand-image { justify-self:start; max-width:420px; } .hero-grid h2 { font-size:29px; } }

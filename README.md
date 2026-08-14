@@ -1,33 +1,65 @@
 <p align="center">
-  <img src="docs/images/hero.png" alt="EVCC to PDF" width="100%">
+  <img src="docs/images/hero.png" alt="EVCC to PDF – modulare Energieabrechnung" width="100%">
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.2.02-22c55e">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.3.0-22c55e">
   <img alt="Home Assistant" src="https://img.shields.io/badge/Home%20Assistant-App-41BDF5">
   <img alt="EVCC" src="https://img.shields.io/badge/EVCC-compatible-00c853">
+  <img alt="Homeoffice" src="https://img.shields.io/badge/Homeoffice-Energieabrechnung-1597ff">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-lightgrey">
 </p>
 
 # EVCC to PDF
 
-**EVCC to PDF** erstellt aus EVCC-Ladevorgängen nachvollziehbare PDF-Abrechnungen für zuhause geladene Firmen- oder Dienstfahrzeuge – inklusive Fahrzeugaufteilung, Strompreisermittlung und optionalem E-Mail-Versand.
+**EVCC to PDF** ist ab **v1.3.0** ein modularer Energie-Abrechnungsbaukasten für Home Assistant. Neben EVCC-Ladevorgängen können jetzt auch Home-Assistant-Entitäten wie Shelly-Energiezähler, Leistungs-Sensoren, Server, 3D-Drucker oder Klimaanlagen in frei definierbaren Gruppen ausgewertet werden.
 
-Das Home-Assistant-App richtet sich besonders an Nutzer, die Ladeenergie an der privaten Wallbox regelmäßig gegenüber ihrem Arbeitgeber abrechnen möchten.
+Das Ziel: Energieverbrauch im Homeoffice oder beim Laden eines Dienstwagens nachvollziehbar über einen Zeitraum ermitteln, Kosten berechnen, als PDF dokumentieren und optional automatisch per E-Mail versenden.
 
 ## Highlights
 
-- Automatische PDF-Abrechnung aus EVCC-Ladevorgängen
-- Auswertung getrennt nach Fahrzeugen inklusive Zwischensummen
-- Strompreis je Gruppe wahlweise manuell oder per **BMF-Strompreispauschale**
-- Automatische Ermittlung des amtlichen Destatis-Werts für unterstützte Abrechnungsjahre
-- Anzeige des zugrunde gelegten Strompreises direkt in der Auswertung
-- Monatliche, quartalsweise, halbjährliche oder jährliche Abrechnung
-- Automatischer E-Mail-Versand mit PDF-Anhang
-- Gruppen für unterschiedliche Fahrzeuge, Empfänger und Abrechnungsregeln
-- HTML-Template-Verwaltung mit grafischem Editor
-- Persistente, atomare Speicherung mit Backups und MQTT-Fallback
-- Home-Assistant-Ingress – keine separate Portfreigabe nötig
+- **EVCC-Gruppen** für Fahrzeuge und Ladevorgänge
+- **Home-Assistant-Gruppen** für beliebige geeignete Energiequellen
+- Mehrere Entitäten pro Gruppe, z. B. drei Phasen + 3D-Drucker + Server
+- Gruppensumme aus den ausgewählten Quellen
+- Einzelne Quellen können **nur als Detail angezeigt** und von der Summe ausgeschlossen werden – wichtig gegen Doppelzählungen
+- Energie-Sensoren (`Wh`, `kWh`, `MWh`) werden als Zähler ausgewertet
+- Leistungssensoren (`W`, `kW`, `MW`) werden über den Abrechnungszeitraum zu kWh integriert
+- Climate-/Switch-Entitäten können optional über **Laufzeit × Nennleistung** geschätzt werden
+- Home-Assistant-Langzeitstatistiken werden bevorzugt genutzt, mit History-Fallback
+- Strompreis je Gruppe manuell; für EVCC zusätzlich **BMF-/Destatis-Strompreispauschale**
+- Fahrzeugbasierte EVCC-Auswertung mit Zwischensummen
+- PDF-Vorschau, PDF-Erstellung und automatischer E-Mail-Versand
+- Monatlich, quartalsweise, halbjährlich oder jährlich
+- HTML-Templates inklusive Editor
+- Persistente, atomare Speicherung mit Backups und MQTT-Spiegel
+- Neues Branding für **E-Mobilität + Homeoffice**
+
+## Beispiel für modulare Gruppen
+
+### Gruppe 1 – Homeoffice Stromkreise
+
+- Shelly Phase 1
+- Shelly Phase 2
+- Shelly Phase 3
+- Shelly Plug 3D-Drucker
+
+Wenn der 3D-Drucker bereits in Phase 1 enthalten ist, kann der Plug trotzdem als Detailposition angezeigt werden. Die Option **„In Gruppensumme einrechnen“** wird dann für den Plug deaktiviert.
+
+### Gruppe 2 – IT & Server
+
+- Shelly / Energie-Sensor Server
+- weitere IT-Verbraucher
+
+### Gruppe 3 – Klimaanlage
+
+Optimal ist ein eigener Energie- oder Leistungssensor der Klimaanlage. Falls nur eine `climate.*`-Entität vorhanden ist, kann alternativ die Laufzeit mit einer hinterlegten Nennleistung verrechnet werden. Diese Variante wird im Bericht ausdrücklich als **Schätzung** gekennzeichnet.
+
+### Gruppe 4 – E-Fahrzeuge
+
+- EVCC-Ladevorgänge
+- Untergliederung nach Fahrzeugen
+- optional BMF-/Destatis-Strompreispauschale
 
 ## Installation in Home Assistant
 
@@ -42,96 +74,125 @@ Das Home-Assistant-App richtet sich besonders an Nutzer, die Ladeenergie an der 
 3. `https://github.com/fbo1982/evcc_to_pdf_addon.git` hinzufügen.
 4. **EVCC to PDF** installieren und starten.
 5. Optional **In Seitenleiste anzeigen** aktivieren.
-6. Weboberfläche öffnen und EVCC, SMTP und Gruppen konfigurieren.
+6. Weboberfläche öffnen und die gewünschten Datenquellen und Gruppen konfigurieren.
 
 ## Schnellstart
 
-1. Unter **Einstellungen** die EVCC-URL hinterlegen.
-2. Optional SMTP-Daten für den automatischen Versand eintragen.
-3. Unter **Gruppen** Empfänger, Fahrzeuge und Abrechnungszeitraum definieren.
-4. Strompreis auf **Manuell** oder **BMF-Strompreispauschale automatisch** setzen.
-5. Unter **Manuell** eine Vorschau erzeugen und die erste PDF prüfen.
-6. Anschließend bei Bedarf den Scheduler aktivieren.
+1. Unter **Einstellungen** EVCC konfigurieren, wenn Fahrzeugabrechnungen genutzt werden sollen.
+2. SMTP und Standard-Strompreis hinterlegen.
+3. Unter **Gruppen** eine neue Abrechnungsgruppe anlegen.
+4. Gruppentyp wählen: **EVCC** oder **Home Assistant**.
+5. Bei Home Assistant zuerst **HA-Entitäten aktualisieren**.
+6. Gewünschte Energie-/Leistungsquellen hinzufügen.
+7. Prüfen, welche Quellen in die Gruppensumme einfließen dürfen.
+8. Unter **Manuell** Vorschau und PDF für einen Testmonat erzeugen.
+9. Danach optional den Scheduler aktivieren.
 
-## Strompreispauschale ab 2026
+## Home-Assistant-Verbrauchsermittlung
 
-Für unterstützte Abrechnungsjahre kann EVCC to PDF die BMF-Strompreispauschale verwenden. Dabei wird der maßgebliche Destatis-Gesamtstrompreis des ersten Halbjahres des Vorjahres aus der Statistik **61243-0001** herangezogen und entsprechend der BMF-Regel auf volle Cent je kWh abgerundet. Für **2026** ist im Add-on **0,34 €/kWh** hinterlegt.
+EVCC to PDF nutzt den internen Home-Assistant-Core-API-Zugriff des Apps. Es ist kein separater Long-Lived Access Token erforderlich.
 
-Bei manueller Preiswahl wird in der Abrechnung nur der verwendete Strompreis ausgegeben. Angaben zur Preisermittlung erscheinen ausschließlich bei aktivierter BMF-Automatik.
+### Energiezähler
 
-> **Hinweis:** EVCC to PDF ist ein technisches Abrechnungswerkzeug und keine Steuer- oder Rechtsberatung. Prüfe die für deinen Arbeitgeber und deinen konkreten Fall geltenden Vorgaben.
+Für Sensoren mit Energieeinheit wie `kWh` oder `Wh` wird die Verbrauchsdifferenz des Abrechnungszeitraums ermittelt. Wenn Home Assistant Langzeitstatistiken für die Entität führt, werden diese bevorzugt genutzt. Damit sind auch Abrechnungszeiträume möglich, die über die normale Recorder-History hinausreichen.
 
-## Fahrzeugbasierte Abrechnung
+### Leistungssensoren
 
-Ladevorgänge werden in der Standardausgabe nach Fahrzeugen gegliedert. Jedes Fahrzeug erhält eine eigene Tabelle und eine Zwischensumme; danach folgt die Gesamtsumme für den Abrechnungszeitraum.
+Bei Sensoren in `W` oder `kW` wird die mittlere Leistung aus Home-Assistant-Statistiken über die Zeit integriert und daraus der Energieverbrauch in kWh berechnet.
 
-Damit bleiben Abrechnungen auch dann gut nachvollziehbar, wenn über dieselbe EVCC-Installation mehrere Fahrzeuge geladen werden.
+### Laufzeit-Schätzung
 
-## Screenshots
+Für `climate.*`, `switch.*`, `binary_sensor.*` und `input_boolean.*` kann als Fallback eine Nennleistung hinterlegt werden. Der Verbrauch wird dann aus aktiver Laufzeit × Nennleistung berechnet. Diese Methode ist eine Schätzung und kein gemessener Energieverbrauch.
 
-### Manuelle Abrechnung
+## Doppelzählung verhindern
 
-![Manuelle Abrechnung](docs/images/manual.png)
+Ein wichtiger Teil der Gruppenlogik ist **„In Gruppensumme einrechnen“**. Beispiel:
 
-### Gruppenverwaltung
+- Phase 1 misst 20 kWh und enthält bereits den 3D-Drucker.
+- Der 3D-Drucker-Plug misst davon 3 kWh.
+- Werden beide summiert, entstünden fälschlich 23 kWh.
 
-![Gruppenverwaltung](docs/images/groups.png)
+Deshalb kann der 3D-Drucker mit 3 kWh im Bericht sichtbar bleiben, aber aus der Gruppensumme ausgeschlossen werden. Die Gruppensumme bleibt korrekt bei 20 kWh.
 
-### HTML-Templates
+## Strompreis
 
-![HTML Templates](docs/images/templates.png)
+### Manuell
+
+Der Gruppenpreis wird in €/kWh eingetragen. Bleibt der Gruppen-Override leer, wird der Standard-Strompreis aus **Einstellungen** verwendet.
+
+Bei manueller Preiswahl erscheint im PDF nur:
+
+**Zugrunde gelegter Strompreis: … €/kWh**
+
+Eine Zeile „Preisermittlung“ wird nicht ausgegeben.
+
+### BMF-/Destatis-Pauschale
+
+Die automatische BMF-/Destatis-Option bleibt für **EVCC-Fahrzeuggruppen** verfügbar. Sie wird bewusst nicht auf allgemeine Homeoffice-/Home-Assistant-Gruppen übertragen.
+
+> **Hinweis:** Das Projekt ist ein technisches Abrechnungswerkzeug und keine Steuer-, Rechts- oder Lohnabrechnungsberatung.
+
+## PDF-Ausgabe
+
+### EVCC-Gruppe
+
+- Fahrzeug
+- Datum, Start- und Endzeit
+- geladene kWh
+- Kosten je Ladevorgang
+- Zwischensumme je Fahrzeug
+- GesamtkWh und Gesamtkosten
+- verwendeter Strompreis
+
+### Home-Assistant-Gruppe
+
+- Quellenname
+- Entity-ID
+- Verbrauch in kWh
+- Kosten
+- Berechnungsmethode
+- Information, ob die Position in der Gruppensumme enthalten ist
+- Gesamtverbrauch und Gesamtkosten der Gruppe
 
 ## Templates
 
-Das mitgelieferte Standardtemplate kann wie ein eigenes Template bearbeitet, ersetzt und – sofern ein anderes Template als Standard gewählt wurde – gelöscht werden. Der grafische Editor arbeitet mit den vorhandenen EVCC-/Jinja-Platzhaltern.
+Das Standardtemplate unterstützt jetzt beide Gruppentypen. Zusätzlich stehen unter anderem folgende Kontexte zur Verfügung:
 
-Neue Abrechnungsdaten stehen unter anderem über diese Kontexte zur Verfügung:
-
+- `group_name`
+- `group_type`
+- `ha_sources`
 - `vehicle_groups`
-- `electricity_price`
+- `sessions`
 - `electricity_price_eur_kwh`
 - `price_mode`
 - `price_method_label`
 - `price_source_label`
-- `price_source_year`
+- `total_energy_kwh`
+- `total_cost_eur`
 
-Eine Übersicht der Platzhalter liegt in [`evcc_to_pdf/PLACEHOLDERS.md`](evcc_to_pdf/PLACEHOLDERS.md).
+Eine vollständige Übersicht liegt in [`evcc_to_pdf/PLACEHOLDERS.md`](evcc_to_pdf/PLACEHOLDERS.md).
 
 ## Datensicherheit und Persistenz
 
-Konfiguration und benutzerdefinierte Templates werden persistent gespeichert. Schreibvorgänge erfolgen atomar; vor Änderungen werden Sicherungen angelegt. Falls eine lokale Konfiguration beschädigt ist, versucht das Add-on zuerst ein gültiges Backup und anschließend den MQTT-Spiegel zu verwenden.
+Konfiguration und benutzerdefinierte Templates werden persistent im Home-Assistant-App-Konfigurationsbereich gespeichert. Schreibvorgänge erfolgen atomar und vorhandene Einstellungen werden vor Änderungen gesichert. Ein kurzzeitig nicht verfügbarer MQTT-Broker darf die lokale Konfiguration nicht mit Werkseinstellungen überschreiben.
 
-PDF-Dateien werden unter `/share/evcc-pdfs` abgelegt.
-
-## Projektstruktur
-
-```text
-evcc_to_pdf_addon/
-├── README.md
-├── CHANGELOG.md
-├── repository.yaml
-├── docs/images/
-└── evcc_to_pdf/
-    ├── config.yaml
-    ├── icon.png
-    ├── logo.png
-    ├── README.md
-    ├── DOCS.md
-    ├── app.py
-    ├── generate_pdf_report.py
-    ├── templates/
-    └── static/
-```
+Erzeugte PDF-Dateien werden unter `/share/evcc-pdfs` abgelegt.
 
 ## Branding
 
-Die App enthält ein eigenes Home-Assistant-Icon (`icon.png`) und Logo (`logo.png`). Zusätzlich werden Logo und Favicon in der EVCC-to-PDF-Weboberfläche verwendet.
+v1.3.0 enthält das neue Homeoffice-/E-Mobility-Branding:
+
+- `evcc_to_pdf/icon.png` – App-Icon
+- `evcc_to_pdf/logo.png` – App-Store-Logo
+- `docs/images/icon-512.png` – großes Icon
+- `docs/images/logo-wide.png` – breites Logo
+- `docs/images/hero.png` – vollständige Projektgrafik
 
 ## Changelog
 
 Alle Änderungen findest du in [`CHANGELOG.md`](CHANGELOG.md).
 
-## Repository & Releases
+## Repository
 
 - Repository: `https://github.com/fbo1982/evcc_to_pdf_addon`
 - Releases: `https://github.com/fbo1982/evcc_to_pdf_addon/releases`

@@ -1,7 +1,7 @@
 {% extends "layout.html" %}
 {% block content %}
 <section class="card">
-  <h2>Manuell</h2>
+  <h2>Abrechnung manuell erstellen</h2>
   {% if not settings.groups %}
     <p>Bitte zuerst mindestens eine Gruppe anlegen.</p>
   {% else %}
@@ -9,7 +9,7 @@
       <label><span>Gruppe</span>
         <select name="group_id">
           {% for g in settings.groups %}
-          <option value="{{ g.id }}" {% if g.id == selected_group_id %}selected{% endif %}>{{ g.name }}</option>
+          <option value="{{ g.id }}" {% if g.id == selected_group_id %}selected{% endif %}>{{ g.name }} · {{ "Home Assistant" if g.group_type == "homeassistant" else "EVCC" }}</option>
           {% endfor %}
         </select>
       </label>

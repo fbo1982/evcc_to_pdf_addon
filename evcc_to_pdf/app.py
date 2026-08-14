@@ -17,10 +17,12 @@ from datetime import datetime, timedelta
 from email.message import EmailMessage
 from io import StringIO
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import paho.mqtt.client as mqtt
 import requests
+import websocket
 from flask import Flask, flash, redirect, render_template, request
 from jinja2 import Template
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -31,6 +33,9 @@ SETTINGS_DIR = Path(os.environ.get("EVCC_TO_PDF_SETTINGS_DIR", "/config"))
 SETTINGS_FILE = SETTINGS_DIR / "settings.json"
 BACKUP_DIR = SETTINGS_DIR / "backups"
 BMF_PRICE_CACHE_FILE = SETTINGS_DIR / "bmf_price_cache.json"
+HA_ENTITY_CACHE_FILE = SETTINGS_DIR / "ha_entity_cache.json"
+HA_API_BASE = os.environ.get("HA_API_BASE", "http://supervisor/core/api").rstrip("/")
+HA_WS_URL = os.environ.get("HA_WS_URL", "ws://supervisor/core/websocket")
 LEGACY_SETTINGS_FILES = [
     Path("/addon_config/evcc_to_pdf/settings.json"),
     Path("/data/evcc_to_pdf/settings.json"),
@@ -45,6 +50,7 @@ DESTatis_TABLE_CODE = "61243-0001"
 DESTatis_CSV_URL = "https://www-genesis.destatis.de/genesis-old/downloads/00/tables/61243-0001_00.csv"
 LEGACY_DEFAULT_SOURCE_HASHES = {
     "5492eab4e4ea677da86d5c283c30f9ae1b4e70f3af677161232106487a6f9f01",
+    "e845ab04ca5c28a3cc6b9fd568a1b0900bef17922e97605c81f8427390b64f56",
 }
 BMF_RATE_CATALOG = {
     2026: {
@@ -55,7 +61,7 @@ BMF_RATE_CATALOG = {
         "source": "BMF/Destatis",
     },
 }
-APP_VERSION = "1.2.02"
+APP_VERSION = "1.3.0"
 
 DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
 <html lang="de">
@@ -68,28 +74,31 @@ DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
       @bottom-center {
         content: "- Seite " counter(page) " / " counter(pages) " -";
         font-size: 9pt;
-        color: #444;
+        color: #445;
       }
     }
-    body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 10pt; color: #111; }
+    body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 10pt; color: #111827; }
     .header { display: table; width: 100%; margin-bottom: 28px; }
     .col { display: table-cell; width: 50%; vertical-align: top; }
     .right { text-align: right; }
     .date-line { margin-top: 24px; margin-bottom: 30px; }
-    .period { margin: 26px 0 22px; font-weight: bold; font-size: 11pt; }
+    .period { margin: 26px 0 8px; font-weight: bold; font-size: 11pt; }
+    .group-title { margin: 0 0 20px; color: #164e8a; font-size: 13pt; }
     .vehicle-section { margin: 0 0 22px; page-break-inside: avoid; }
     .vehicle-title { margin: 12px 0 7px; font-size: 10.5pt; }
     table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 9.2pt; table-layout: fixed; }
-    th, td { border: 1px solid #666; padding: 5px 6px; vertical-align: top; word-wrap: break-word; }
-    th { background: #efefef; text-align: left; }
+    th, td { border: 1px solid #64748b; padding: 5px 6px; vertical-align: top; word-wrap: break-word; }
+    th { background: #eef4fa; text-align: left; }
     .vehicle-total { margin: 7px 0 0; font-size: 9.4pt; }
-    .summary { margin-top: 14px; }
+    .summary { margin-top: 14px; padding: 12px; border: 1px solid #cbd5e1; background: #f8fbff; }
     .summary p { margin: 4px 0; }
-    .price-info { margin-top: 12px; padding-top: 8px; border-top: 1px solid #bbb; }
+    .price-info { margin-top: 12px; padding-top: 8px; border-top: 1px solid #cbd5e1; }
     .bank { margin-top: 20px; }
     .closing { margin-top: 24px; }
     .signature { margin-top: 10px; }
-    .notice { margin-top: 20px; font-size: 9pt; color: #444; }
+    .notice { margin-top: 20px; font-size: 9pt; color: #475569; }
+    .detail-only { color: #64748b; font-size: 8.5pt; }
+    .method { color: #475569; font-size: 8.5pt; }
   </style>
 </head>
 <body>
@@ -109,38 +118,66 @@ DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
   </div>
 
   <div class="period">{{ billing_mode_label }} – {{ period_label }}</div>
+  <div class="group-title">{{ group_name }}</div>
 
-  {% for vehicle_group in vehicle_groups %}
+  {% if group_type == "homeassistant" %}
   <div class="vehicle-section">
-    <div class="vehicle-title"><strong>Fahrzeug: {{ vehicle_group.vehicle }}</strong></div>
     <table>
       <thead>
         <tr>
-          <th>Datum</th>
-          <th>Startzeit</th>
-          <th>Endzeit</th>
-          <th>Geladene kWh</th>
-          <th>Kosten (€)</th>
+          <th style="width:24%">Quelle</th>
+          <th style="width:31%">Home-Assistant-Entität</th>
+          <th style="width:15%">Verbrauch</th>
+          <th style="width:15%">Kosten (€)</th>
+          <th style="width:15%">Summierung</th>
         </tr>
       </thead>
       <tbody>
-      {% for charge in vehicle_group.sessions %}
+      {% for source in ha_sources %}
         <tr>
-          <td>{{ charge.date }}</td>
-          <td>{{ charge.start_time }}</td>
-          <td>{{ charge.end_time }}</td>
-          <td>{{ charge.energy_kwh_formatted }}</td>
-          <td>{{ charge.cost_eur }}</td>
+          <td>{{ source.label }}<div class="method">{{ source.calculation_method }}</div></td>
+          <td>{{ source.entity_id }}</td>
+          <td>{{ source.energy_kwh_formatted }} kWh</td>
+          <td>{{ source.cost_formatted }} €</td>
+          <td>{% if source.include_in_total %}enthalten{% else %}<span class="detail-only">nur Detail</span>{% endif %}</td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
-    <p class="vehicle-total"><strong>Zwischensumme {{ vehicle_group.vehicle }}:</strong> {{ vehicle_group.total_energy_kwh }} · {{ vehicle_group.total_cost_eur }}</p>
   </div>
-  {% endfor %}
+  {% else %}
+    {% for vehicle_group in vehicle_groups %}
+    <div class="vehicle-section">
+      <div class="vehicle-title"><strong>Fahrzeug: {{ vehicle_group.vehicle }}</strong></div>
+      <table>
+        <thead>
+          <tr>
+            <th>Datum</th>
+            <th>Startzeit</th>
+            <th>Endzeit</th>
+            <th>Geladene kWh</th>
+            <th>Kosten (€)</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for charge in vehicle_group.sessions %}
+          <tr>
+            <td>{{ charge.date }}</td>
+            <td>{{ charge.start_time }}</td>
+            <td>{{ charge.end_time }}</td>
+            <td>{{ charge.energy_kwh_formatted }}</td>
+            <td>{{ charge.cost_eur }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="vehicle-total"><strong>Zwischensumme {{ vehicle_group.vehicle }}:</strong> {{ vehicle_group.total_energy_kwh }} · {{ vehicle_group.total_cost_eur }}</p>
+    </div>
+    {% endfor %}
+  {% endif %}
 
   <div class="summary">
-    <p><strong>Gesamt geladene kWh:</strong> {{ total_energy_kwh }}</p>
+    <p><strong>{% if group_type == "homeassistant" %}Gesamtverbrauch der Gruppe{% else %}Gesamt geladene kWh{% endif %}:</strong> {{ total_energy_kwh }}</p>
     <p><strong>Gesamtkosten:</strong> {{ total_cost_eur }}</p>
     <div class="price-info">
       <p><strong>Zugrunde gelegter Strompreis:</strong> {{ electricity_price_eur_kwh }}</p>
@@ -176,15 +213,15 @@ EDITOR_DATA_PREFIX = "<!-- EVCC_EDITOR_DATA_BASE64:"
 def build_default_editor_schema(raw_html=""):
     raw_html = str(raw_html or "").strip()
     blocks = [
-        {"id": str(uuid.uuid4()), "type": "heading", "title": "Überschrift", "level": 1, "text": "Ladebericht"},
+        {"id": str(uuid.uuid4()), "type": "heading", "title": "Überschrift", "level": 1, "text": "Energieabrechnung"},
         {"id": str(uuid.uuid4()), "type": "text", "title": "Zeitraum", "text": "Zeitraum: {{ period_label }}"},
-        {"id": str(uuid.uuid4()), "type": "summary", "title": "Kennzahlen", "energy_label": "Gesamt geladen", "cost_label": "Gesamtkosten"},
-        {"id": str(uuid.uuid4()), "type": "table", "title": "Ladevorgänge", "heading": "Ladevorgänge", "show_cost": True},
+        {"id": str(uuid.uuid4()), "type": "summary", "title": "Kennzahlen", "energy_label": "Gesamtverbrauch", "cost_label": "Gesamtkosten"},
+        {"id": str(uuid.uuid4()), "type": "table", "title": "Abrechnungspositionen", "heading": "Abrechnungspositionen", "show_cost": True},
         {"id": str(uuid.uuid4()), "type": "text", "title": "Hinweis", "text": "Dieses Dokument wurde elektronisch erstellt und bedarf keiner Unterschrift."},
     ]
     if raw_html:
         blocks = [{"id": str(uuid.uuid4()), "type": "html", "title": "Bestehendes HTML", "html": raw_html}]
-    return {"version": 1, "page": {"title": "EVCC Bericht", "accent": "#22c55e"}, "blocks": blocks}
+    return {"version": 1, "page": {"title": "Energieabrechnung", "accent": "#22c55e"}, "blocks": blocks}
 
 
 def extract_editor_schema(content):
@@ -225,27 +262,36 @@ def render_editor_template_html(schema):
         elif block_type == "text":
             body_parts.append(f'<section class="block"><p>{_editor_text_html(block.get("text"))}</p></section>')
         elif block_type == "summary":
-            energy_label = block.get("energy_label") or "Gesamt geladen"
+            energy_label = block.get("energy_label") or "Gesamtverbrauch"
             cost_label = block.get("cost_label") or "Gesamtkosten"
             body_parts.append(f'''<section class="block">
 <div class="summary-grid">
   <div class="metric-card">
     <div class="metric-label">{energy_label}</div>
-    <div class="metric-value">{{{{ total_energy_kwh }}}} kWh</div>
+    <div class="metric-value">{{{{ total_energy_kwh }}}}</div>
   </div>
   <div class="metric-card">
     <div class="metric-label">{cost_label}</div>
-    <div class="metric-value">{{{{ total_cost_eur }}}} €</div>
+    <div class="metric-value">{{{{ total_cost_eur }}}}</div>
   </div>
 </div>
 </section>''')
         elif block_type == "table":
-            heading = block.get("heading") or title or "Ladevorgänge"
+            heading = block.get("heading") or title or "Abrechnungspositionen"
             cost_header = '<th>Kosten (€)</th>' if block.get("show_cost", True) else ''
             body_parts.append(f'''<section class="block">
 <h3>{heading}</h3>
 <table>
   <thead>
+    {{% if group_type == "homeassistant" %}}
+    <tr>
+      <th>Quelle</th>
+      <th>Home-Assistant-Entität</th>
+      <th>Verbrauch (kWh)</th>
+      <th>Kosten (€)</th>
+      <th>Summierung</th>
+    </tr>
+    {{% else %}}
     <tr>
       <th>Datum</th>
       <th>Startzeit</th>
@@ -254,6 +300,7 @@ def render_editor_template_html(schema):
       <th>Geladene kWh</th>
       {cost_header}
     </tr>
+    {{% endif %}}
   </thead>
   <tbody>
     {{{{ rows_html|safe }}}}
@@ -326,7 +373,7 @@ DEFAULT_SETTINGS = {
         "grid_price": 0.0,
         "default_billing_mode": "monthly",
         "default_email_body": "Bitte überweisen Sie den offenen Betrag auf das unten angegebene Konto.",
-        "default_email_subject": "EVCC Abrechnung {{period_label}}",
+        "default_email_subject": "Energieabrechnung {{period_label}}",
     },
     "cached_assets": [],
     "groups": [],
@@ -542,11 +589,38 @@ def normalize_template_dict(templates):
         out[DEFAULT_TEMPLATE_KEY] = create_seed_template_entry()
     return out
 
+def normalize_ha_source(source):
+    base = {
+        "entity_id": "",
+        "label": "",
+        "mode": "auto",
+        "include_in_total": True,
+        "nominal_power_w": 0.0,
+        "unit": "",
+        "device_class": "",
+        "state_class": "",
+        "domain": "",
+    }
+    merged = deep_merge(base, source or {})
+    merged["entity_id"] = str(merged.get("entity_id") or "").strip()
+    merged["label"] = str(merged.get("label") or merged["entity_id"]).strip()
+    merged["mode"] = str(merged.get("mode") or "auto").strip().lower()
+    if merged["mode"] not in {"auto", "energy", "power", "runtime"}:
+        merged["mode"] = "auto"
+    merged["include_in_total"] = bool(merged.get("include_in_total", True))
+    merged["nominal_power_w"] = max(0.0, parse_float(merged.get("nominal_power_w"), 0.0))
+    for key in ("unit", "device_class", "state_class", "domain"):
+        merged[key] = str(merged.get(key) or "").strip()
+    return merged
+
+
 def normalize_group(group):
     base = {
         "id": str(uuid.uuid4()),
         "active": True,
         "name": "",
+        "group_type": "evcc",
+        "group_icon": "auto",
         "recipient_name": "",
         "recipient_company": "",
         "recipient_email": "",
@@ -554,6 +628,7 @@ def normalize_group(group):
         "recipient_zip": "",
         "recipient_city": "",
         "vehicles": [],
+        "ha_sources": [],
         "grid_price_override": "",
         "grid_price_mode": "manual",
         "sender_mode": "default",
@@ -572,10 +647,20 @@ def normalize_group(group):
         "custom_bank": {"recipient": "", "iban": "", "bic": "", "institute": ""},
     }
     merged = deep_merge(base, group or {})
+    merged["group_type"] = str(merged.get("group_type") or "evcc").strip().lower()
+    if merged["group_type"] not in {"evcc", "homeassistant"}:
+        merged["group_type"] = "evcc"
     if not isinstance(merged.get("vehicles"), list):
         merged["vehicles"] = []
     merged["vehicles"] = [str(v) for v in merged["vehicles"] if str(v).strip()]
+    if not isinstance(merged.get("ha_sources"), list):
+        merged["ha_sources"] = []
+    merged["ha_sources"] = [normalize_ha_source(src) for src in merged["ha_sources"] if isinstance(src, dict) and str(src.get("entity_id") or "").strip()]
+    # Die BMF/Destatis-Pauschale ist ausschließlich für die EV-Ladeabrechnung vorgesehen.
+    if merged["group_type"] != "evcc" and merged.get("grid_price_mode") == "bmf":
+        merged["grid_price_mode"] = "manual"
     return merged
+
 
 def normalize_settings(raw):
     settings = deep_merge(DEFAULT_SETTINGS, raw or {})
@@ -779,6 +864,348 @@ def fetch_available_assets(settings):
 
     return sorted(assets, key=lambda x: x.lower())
 
+
+def _ha_token():
+    token = str(os.environ.get("SUPERVISOR_TOKEN", "")).strip()
+    if not token:
+        raise ValueError("Home-Assistant-Zugriff ist nicht verfügbar (SUPERVISOR_TOKEN fehlt).")
+    return token
+
+
+def _ha_headers():
+    return {"Authorization": f"Bearer {_ha_token()}", "Content-Type": "application/json"}
+
+
+def ha_rest_get(path, params=None, timeout=30):
+    response = requests.get(f"{HA_API_BASE}/{str(path).lstrip('/')}", headers=_ha_headers(), params=params, timeout=timeout)
+    response.raise_for_status()
+    return response.json()
+
+
+def get_ha_timezone():
+    try:
+        cfg = ha_rest_get("config", timeout=10)
+        name = str(cfg.get("time_zone") or "UTC")
+        return ZoneInfo(name)
+    except Exception:
+        return ZoneInfo("UTC")
+
+
+def _as_ha_utc_iso(value):
+    tz = get_ha_timezone()
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=tz)
+    return value.astimezone(ZoneInfo("UTC")).isoformat()
+
+
+def _ha_source_kind(entity):
+    attrs = entity.get("attributes", {}) if isinstance(entity, dict) else {}
+    entity_id = str(entity.get("entity_id") or "") if isinstance(entity, dict) else ""
+    domain = entity_id.split(".", 1)[0] if "." in entity_id else ""
+    device_class = str(attrs.get("device_class") or "").lower()
+    unit = str(attrs.get("unit_of_measurement") or "").strip()
+    unit_l = unit.lower().replace(" ", "")
+    if device_class == "energy" or unit_l in {"wh", "kwh", "mwh"}:
+        return "energy"
+    if device_class == "power" or unit_l in {"w", "kw", "mw"}:
+        return "power"
+    if domain in {"climate", "switch", "binary_sensor", "input_boolean"}:
+        return "runtime"
+    return "unsupported"
+
+
+def fetch_ha_entities():
+    states = ha_rest_get("states", timeout=30)
+    candidates = []
+    for item in states if isinstance(states, list) else []:
+        entity_id = str(item.get("entity_id") or "").strip()
+        if not entity_id:
+            continue
+        attrs = item.get("attributes", {}) if isinstance(item.get("attributes"), dict) else {}
+        kind = _ha_source_kind(item)
+        # Für Abrechnungen zeigen wir Energie-/Leistungssensoren sowie schaltbare/HVAC-Entitäten
+        # als Laufzeit-Fallback. Andere Entitäten würden keine belastbare Verbrauchsermittlung erlauben.
+        if kind == "unsupported":
+            continue
+        candidates.append({
+            "entity_id": entity_id,
+            "label": str(attrs.get("friendly_name") or entity_id),
+            "kind": kind,
+            "unit": str(attrs.get("unit_of_measurement") or ""),
+            "device_class": str(attrs.get("device_class") or ""),
+            "state_class": str(attrs.get("state_class") or ""),
+            "domain": entity_id.split(".", 1)[0],
+            "state": str(item.get("state") or ""),
+        })
+    candidates.sort(key=lambda x: (x["kind"], x["label"].lower(), x["entity_id"].lower()))
+    _atomic_write_json(HA_ENTITY_CACHE_FILE, {"updated_at": datetime.now().isoformat(), "entities": candidates})
+    return candidates
+
+
+def load_ha_entity_cache():
+    data = _read_json_file(HA_ENTITY_CACHE_FILE)
+    if not isinstance(data, dict):
+        return {"updated_at": "", "entities": []}
+    entities = data.get("entities") if isinstance(data.get("entities"), list) else []
+    return {"updated_at": str(data.get("updated_at") or ""), "entities": entities}
+
+
+def ha_ws_call(command, timeout=35):
+    token = _ha_token()
+    ws = websocket.create_connection(HA_WS_URL, timeout=timeout)
+    try:
+        hello = json.loads(ws.recv())
+        if hello.get("type") == "auth_required":
+            ws.send(json.dumps({"type": "auth", "access_token": token}))
+            auth = json.loads(ws.recv())
+            if auth.get("type") != "auth_ok":
+                raise ValueError(f"Home-Assistant-WebSocket-Authentifizierung fehlgeschlagen: {auth.get('message', auth.get('type'))}")
+        command = dict(command)
+        command.setdefault("id", 1)
+        ws.send(json.dumps(command))
+        while True:
+            message = json.loads(ws.recv())
+            if message.get("type") == "result" and message.get("id") == command["id"]:
+                if not message.get("success"):
+                    raise ValueError(str(message.get("error") or "Home-Assistant-WebSocket-Aufruf fehlgeschlagen"))
+                return message.get("result")
+    finally:
+        try:
+            ws.close()
+        except Exception:
+            pass
+
+
+def fetch_ha_statistics(entity_id, start, end, types, period="hour"):
+    command = {
+        "id": 1,
+        "type": "recorder/statistics_during_period",
+        "start_time": _as_ha_utc_iso(start),
+        "end_time": _as_ha_utc_iso(end),
+        "statistic_ids": [entity_id],
+        "period": period,
+        "types": list(types),
+    }
+    result = ha_ws_call(command)
+    if not isinstance(result, dict):
+        return []
+    rows = result.get(entity_id, [])
+    return rows if isinstance(rows, list) else []
+
+
+def fetch_ha_history(entity_id, start, end, include_attributes=False):
+    params = {
+        "filter_entity_id": entity_id,
+        "end_time": _as_ha_utc_iso(end),
+    }
+    if not include_attributes:
+        params["minimal_response"] = "true"
+        params["no_attributes"] = "true"
+    result = ha_rest_get(f"history/period/{_as_ha_utc_iso(start)}", params=params, timeout=45)
+    if not isinstance(result, list) or not result:
+        return []
+    return result[0] if isinstance(result[0], list) else []
+
+
+def _unit_energy_factor_to_kwh(unit):
+    unit = str(unit or "").strip().lower()
+    return {"wh": 0.001, "kwh": 1.0, "mwh": 1000.0}.get(unit, 1.0)
+
+
+def _unit_power_factor_to_kw(unit):
+    unit = str(unit or "").strip().lower()
+    return {"w": 0.001, "kw": 1.0, "mw": 1000.0}.get(unit, 0.001)
+
+
+def _parse_iso_dt(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _energy_from_statistics(entity_id, start, end, unit):
+    # Eine Stunde vor Periodenstart liefert den Basis-Summenwert exakt am Monats-/Quartalsbeginn.
+    rows = fetch_ha_statistics(entity_id, start - timedelta(hours=1), end, ["sum", "state"], period="hour")
+    usable = [r for r in rows if isinstance(r, dict) and (r.get("sum") is not None or r.get("state") is not None)]
+    if not usable:
+        return None
+    start_ms = int(start.replace(tzinfo=get_ha_timezone()).astimezone(ZoneInfo("UTC")).timestamp() * 1000) if start.tzinfo is None else int(start.timestamp()*1000)
+    end_ms = int(end.replace(tzinfo=get_ha_timezone()).astimezone(ZoneInfo("UTC")).timestamp() * 1000) if end.tzinfo is None else int(end.timestamp()*1000)
+    def val(row):
+        return row.get("sum") if row.get("sum") is not None else row.get("state")
+    base_candidates = [r for r in usable if int(r.get("end") or r.get("start") or 0) <= start_ms]
+    end_candidates = [r for r in usable if int(r.get("end") or r.get("start") or 0) <= end_ms]
+    if not end_candidates:
+        return None
+    base = base_candidates[-1] if base_candidates else usable[0]
+    finish = end_candidates[-1]
+    try:
+        delta = float(val(finish)) - float(val(base))
+    except Exception:
+        return None
+    if delta < -1e-6:
+        return None
+    return max(0.0, delta) * _unit_energy_factor_to_kwh(unit)
+
+
+def _power_from_statistics(entity_id, start, end, unit):
+    rows = fetch_ha_statistics(entity_id, start, end, ["mean"], period="hour")
+    if not rows:
+        return None
+    tz = get_ha_timezone()
+    start_ms = int(start.replace(tzinfo=tz).astimezone(ZoneInfo("UTC")).timestamp() * 1000) if start.tzinfo is None else int(start.timestamp()*1000)
+    end_ms = int(end.replace(tzinfo=tz).astimezone(ZoneInfo("UTC")).timestamp() * 1000) if end.tzinfo is None else int(end.timestamp()*1000)
+    total_kwh = 0.0
+    used = False
+    factor = _unit_power_factor_to_kw(unit)
+    for row in rows:
+        if not isinstance(row, dict) or row.get("mean") is None:
+            continue
+        rs = int(row.get("start") or 0)
+        re_ = int(row.get("end") or 0)
+        overlap_ms = max(0, min(re_, end_ms) - max(rs, start_ms))
+        if overlap_ms <= 0:
+            continue
+        total_kwh += float(row["mean"]) * factor * (overlap_ms / 3600000.0)
+        used = True
+    return total_kwh if used else None
+
+
+def _energy_from_history(entity_id, start, end, unit):
+    rows = fetch_ha_history(entity_id, start, end, include_attributes=False)
+    values = []
+    for row in rows:
+        try:
+            values.append(float(str(row.get("state")).replace(",", ".")))
+        except Exception:
+            continue
+    if len(values) < 2:
+        return None
+    total = 0.0
+    previous = values[0]
+    for current in values[1:]:
+        diff = current - previous
+        if diff >= 0:
+            total += diff
+        else:
+            # total_increasing-Sensoren können nach Reset wieder bei 0 beginnen.
+            total += max(0.0, current)
+        previous = current
+    return total * _unit_energy_factor_to_kwh(unit)
+
+
+def _power_from_history(entity_id, start, end, unit):
+    rows = fetch_ha_history(entity_id, start, end, include_attributes=False)
+    if not rows:
+        return None
+    tz = get_ha_timezone()
+    start_a = start.replace(tzinfo=tz) if start.tzinfo is None else start
+    end_a = end.replace(tzinfo=tz) if end.tzinfo is None else end
+    points = []
+    for row in rows:
+        dt = _parse_iso_dt(row.get("last_changed") or row.get("last_updated"))
+        try:
+            value = float(str(row.get("state")).replace(",", "."))
+        except Exception:
+            continue
+        if dt is not None:
+            points.append((dt, value))
+    if not points:
+        return None
+    points.sort(key=lambda x: x[0])
+    factor = _unit_power_factor_to_kw(unit)
+    total = 0.0
+    for idx, (dt, value) in enumerate(points):
+        nxt = points[idx + 1][0] if idx + 1 < len(points) else end_a
+        seg_start = max(dt, start_a)
+        seg_end = min(nxt, end_a)
+        if seg_end > seg_start:
+            total += value * factor * ((seg_end - seg_start).total_seconds() / 3600.0)
+    return max(0.0, total)
+
+
+def _runtime_energy_from_history(entity_id, start, end, nominal_power_w):
+    if nominal_power_w <= 0:
+        raise ValueError("Für Laufzeit-Entitäten muss eine Nennleistung in Watt angegeben werden.")
+    rows = fetch_ha_history(entity_id, start, end, include_attributes=True)
+    if not rows:
+        return None
+    tz = get_ha_timezone()
+    start_a = start.replace(tzinfo=tz) if start.tzinfo is None else start
+    end_a = end.replace(tzinfo=tz) if end.tzinfo is None else end
+    points = []
+    for row in rows:
+        dt = _parse_iso_dt(row.get("last_changed") or row.get("last_updated"))
+        if dt is None:
+            continue
+        attrs = row.get("attributes", {}) if isinstance(row.get("attributes"), dict) else {}
+        hvac_action = str(attrs.get("hvac_action") or "").lower()
+        state = str(row.get("state") or "").lower()
+        if hvac_action:
+            active = hvac_action not in {"off", "idle", "unavailable", "unknown"}
+        else:
+            active = state not in {"off", "idle", "unavailable", "unknown", "none", "0"}
+        points.append((dt, active))
+    if not points:
+        return None
+    points.sort(key=lambda x: x[0])
+    active_seconds = 0.0
+    for idx, (dt, active) in enumerate(points):
+        nxt = points[idx + 1][0] if idx + 1 < len(points) else end_a
+        seg_start = max(dt, start_a)
+        seg_end = min(nxt, end_a)
+        if active and seg_end > seg_start:
+            active_seconds += (seg_end - seg_start).total_seconds()
+    return (active_seconds / 3600.0) * (float(nominal_power_w) / 1000.0)
+
+
+def calculate_ha_source_consumption(source, start, end):
+    entity_id = str(source.get("entity_id") or "").strip()
+    if not entity_id:
+        raise ValueError("Leere Home-Assistant-Entität in der Gruppe.")
+    try:
+        current = ha_rest_get(f"states/{entity_id}", timeout=15)
+    except Exception as err:
+        raise ValueError(f"{entity_id}: Entität konnte nicht gelesen werden ({err})") from err
+    attrs = current.get("attributes", {}) if isinstance(current, dict) else {}
+    unit = str(attrs.get("unit_of_measurement") or source.get("unit") or "")
+    detected = _ha_source_kind(current)
+    mode = str(source.get("mode") or "auto").lower()
+    if mode == "auto":
+        mode = detected
+    if mode == "energy":
+        energy = None
+        try:
+            energy = _energy_from_statistics(entity_id, start, end, unit)
+        except Exception as err:
+            LOGGER.info("Long-Term-Statistik für %s nicht verfügbar: %s", entity_id, err)
+        if energy is None:
+            energy = _energy_from_history(entity_id, start, end, unit)
+        if energy is None:
+            raise ValueError(f"{entity_id}: Energieverbrauch konnte weder aus Langzeitstatistik noch Historie ermittelt werden.")
+        return energy, "Energiezähler (Home Assistant)", unit
+    if mode == "power":
+        energy = None
+        try:
+            energy = _power_from_statistics(entity_id, start, end, unit)
+        except Exception as err:
+            LOGGER.info("Leistungsstatistik für %s nicht verfügbar: %s", entity_id, err)
+        if energy is None:
+            energy = _power_from_history(entity_id, start, end, unit)
+        if energy is None:
+            raise ValueError(f"{entity_id}: Leistung konnte nicht über den Zeitraum integriert werden.")
+        return energy, "Leistung über Zeitraum integriert", unit
+    if mode == "runtime":
+        energy = _runtime_energy_from_history(entity_id, start, end, parse_float(source.get("nominal_power_w"), 0.0))
+        if energy is None:
+            raise ValueError(f"{entity_id}: Laufzeit konnte nicht ermittelt werden.")
+        return energy, "Laufzeit × Nennleistung (Schätzung)", "W"
+    raise ValueError(f"{entity_id}: Entität ist kein Energie-/Leistungssensor. Für climate/switch bitte Modus Laufzeit und Nennleistung verwenden.")
+
+
 def get_ingress_path():
     return request.headers.get("X-Ingress-Path", "").rstrip("/")
 
@@ -884,7 +1311,7 @@ def render_shortcuts(text, summary=None):
 def effective_email_subject(settings, group, summary=None):
     base_subject = group.get("custom_email_subject", "").strip() if group.get("email_subject_mode") == "custom" else settings.get("reporting", {}).get("default_email_subject", "").strip()
     if not base_subject:
-        base_subject = "EVCC Abrechnung {{period_label}}"
+        base_subject = "Energieabrechnung {{period_label}}"
     return render_shortcuts(base_subject, summary)
 
 def effective_billing_mode(settings, group): return group.get("custom_billing_mode", "monthly") if group.get("billing_mode_mode") == "custom" else settings.get("reporting", {}).get("default_billing_mode", "monthly")
@@ -1070,7 +1497,7 @@ def resolve_bmf_rate(billing_year):
 
 def price_info_for_group(settings, group, billing_year):
     mode = str(group.get("grid_price_mode", "manual") or "manual").strip().lower()
-    if mode == "bmf":
+    if mode == "bmf" and str(group.get("group_type", "evcc")) == "evcc":
         info = resolve_bmf_rate(billing_year)
         price = float(info["rate_eur_kwh"])
         source_year = int(info["source_year"])
@@ -1101,7 +1528,18 @@ def price_info_for_group(settings, group, billing_year):
     }
 
 
-def generate_rows_and_summary(settings, group, mode=None, manual_year=None, manual_month=None):
+def _resolve_report_period(settings, group, mode=None, manual_year=None, manual_month=None):
+    if manual_year and manual_month:
+        start = datetime(int(manual_year), int(manual_month), 1)
+        next_period_start = datetime(int(manual_year) + 1, 1, 1) if int(manual_month) == 12 else datetime(int(manual_year), int(manual_month) + 1, 1)
+        end = next_period_start - timedelta(days=1)
+        return start, end, next_period_start, "monthly"
+    mode = mode or effective_billing_mode(settings, group)
+    start, end = period_for_mode(datetime.today(), mode)
+    return start, end, end + timedelta(days=1), mode
+
+
+def generate_evcc_summary(settings, group, mode=None, manual_year=None, manual_month=None):
     sessions = fetch_sessions(settings)
     df = pd.DataFrame(sessions)
     if df.empty:
@@ -1111,13 +1549,7 @@ def generate_rows_and_summary(settings, group, mode=None, manual_year=None, manu
 
     def normalize_vehicle_name(value):
         if isinstance(value, dict):
-            name = (
-                value.get("title")
-                or value.get("name")
-                or value.get("vehicle")
-                or value.get("id")
-                or ""
-            )
+            name = value.get("title") or value.get("name") or value.get("vehicle") or value.get("id") or ""
             return str(name).strip()
         return str(value or "").strip()
 
@@ -1139,45 +1571,25 @@ def generate_rows_and_summary(settings, group, mode=None, manual_year=None, manu
 
     df["created"] = df["created"].apply(parse_local_datetime)
     df = df.dropna(subset=["created"])
-
-    if "vehicle" in df.columns:
-        df["vehicle_display"] = df["vehicle"].apply(normalize_vehicle_name)
-    else:
-        df["vehicle_display"] = ""
-
-    if manual_year and manual_month:
-        start = datetime(int(manual_year), int(manual_month), 1)
-        next_period_start = datetime(int(manual_year) + 1, 1, 1) if int(manual_month) == 12 else datetime(int(manual_year), int(manual_month) + 1, 1)
-        end = next_period_start - timedelta(days=1)
-        mode = "monthly"
-    else:
-        mode = mode or effective_billing_mode(settings, group)
-        start, end = period_for_mode(datetime.today(), mode)
-        next_period_start = end + timedelta(days=1)
-
+    df["vehicle_display"] = df["vehicle"].apply(normalize_vehicle_name) if "vehicle" in df.columns else ""
+    start, end, next_period_start, mode = _resolve_report_period(settings, group, mode, manual_year, manual_month)
     selected = {str(v).strip() for v in group.get("vehicles", []) if str(v).strip()}
     if selected:
         df = df[df["vehicle_display"].isin(selected)]
-
     df = df[(df["created"] >= start) & (df["created"] < next_period_start)]
     if df.empty:
         raise ValueError("Keine Ladevorgänge für den gewählten Zeitraum gefunden.")
-
     df["chargedEnergy"] = pd.to_numeric(df["chargedEnergy"], errors="coerce").fillna(0)
     price_info = price_info_for_group(settings, group, start.year)
     df["price"] = (df["chargedEnergy"] * price_info["price_eur_kwh"]).round(2)
-
     end_col = next((c for c in ("finished", "updated", "end") if c in df.columns), None)
     if end_col:
         df[end_col] = df[end_col].apply(parse_local_datetime)
     else:
         df["__end"] = df["created"]
         end_col = "__end"
-
     df = df.sort_values("created", ascending=True)
-
-    rows_html = []
-    session_rows = []
+    rows_html, session_rows = [], []
     for _, row in df.iterrows():
         dt = row["created"]
         enddt = row[end_col] if pd.notna(row[end_col]) else row["created"]
@@ -1185,57 +1597,74 @@ def generate_rows_and_summary(settings, group, mode=None, manual_year=None, manu
         price = float(row.get("price", 0) or 0)
         vehicle = str(row.get("vehicle_display", ""))
         row_data = {
-            "date": dt.strftime('%d.%m.%Y'),
-            "start_time": dt.strftime('%H:%M'),
-            "end_time": enddt.strftime('%H:%M'),
-            "vehicle": vehicle,
-            "energy_kwh": energy,
-            "energy_kwh_formatted": format_de_number(energy),
-            "cost": price,
-            "cost_formatted": format_de_number(price),
-            "cost_eur": f"{format_de_number(price)} €",
+            "date": dt.strftime('%d.%m.%Y'), "start_time": dt.strftime('%H:%M'), "end_time": enddt.strftime('%H:%M'),
+            "vehicle": vehicle, "energy_kwh": energy, "energy_kwh_formatted": format_de_number(energy),
+            "cost": price, "cost_formatted": format_de_number(price), "cost_eur": f"{format_de_number(price)} €",
         }
         session_rows.append(row_data)
-        rows_html.append(
-            f"<tr><td>{row_data['date']}</td><td>{row_data['start_time']}</td><td>{row_data['end_time']}</td><td>{vehicle}</td><td>{row_data['energy_kwh_formatted']}</td><td>{row_data['cost_eur']}</td></tr>"
-        )
-
-    vehicle_groups = []
-    grouped = {}
+        rows_html.append(f"<tr><td>{row_data['date']}</td><td>{row_data['start_time']}</td><td>{row_data['end_time']}</td><td>{vehicle}</td><td>{row_data['energy_kwh_formatted']}</td><td>{row_data['cost_eur']}</td></tr>")
+    vehicle_groups, grouped = [], {}
     for item in session_rows:
-        vehicle_name = item.get("vehicle") or "Ohne Fahrzeugzuordnung"
-        grouped.setdefault(vehicle_name, []).append(item)
+        grouped.setdefault(item.get("vehicle") or "Ohne Fahrzeugzuordnung", []).append(item)
     for vehicle_name, items in grouped.items():
         vehicle_energy = sum(float(item.get("energy_kwh", 0) or 0) for item in items)
         vehicle_cost = sum(float(item.get("cost", 0) or 0) for item in items)
-        vehicle_groups.append({
-            "vehicle": vehicle_name,
-            "sessions": items,
-            "total_energy": vehicle_energy,
-            "total_cost": vehicle_cost,
-            "total_energy_kwh": f"{format_de_number(vehicle_energy)} kWh",
-            "total_cost_eur": f"{format_de_number(vehicle_cost)} €",
-        })
-
+        vehicle_groups.append({"vehicle": vehicle_name, "sessions": items, "total_energy": vehicle_energy, "total_cost": vehicle_cost,
+                               "total_energy_kwh": f"{format_de_number(vehicle_energy)} kWh", "total_cost_eur": f"{format_de_number(vehicle_cost)} €"})
     total_energy = float(df['chargedEnergy'].sum())
     total_cost = float(df['price'].sum())
     return {
-        "rows_html": "\n".join(rows_html),
-        "sessions": session_rows,
-        "vehicle_groups": vehicle_groups,
-        "total_energy": total_energy,
-        "total_cost": total_cost,
-        "total_energy_kwh": f"{format_de_number(total_energy)} kWh",
-        "total_cost_eur": f"{format_de_number(total_cost)} €",
-        "total_energy_formatted": format_de_number(total_energy),
-        "total_cost_formatted": format_de_number(total_cost),
-        "period_start": start,
-        "period_end": end,
-        "period_start_str": start.strftime('%d.%m.%Y'),
-        "period_end_str": end.strftime('%d.%m.%Y'),
-        "billing_mode": mode,
-        **price_info,
+        "group_type": "evcc", "rows_html": "\n".join(rows_html), "sessions": session_rows, "vehicle_groups": vehicle_groups, "ha_sources": [],
+        "total_energy": total_energy, "total_cost": total_cost, "total_energy_kwh": f"{format_de_number(total_energy)} kWh",
+        "total_cost_eur": f"{format_de_number(total_cost)} €", "total_energy_formatted": format_de_number(total_energy),
+        "total_cost_formatted": format_de_number(total_cost), "period_start": start, "period_end": end,
+        "period_start_str": start.strftime('%d.%m.%Y'), "period_end_str": end.strftime('%d.%m.%Y'), "billing_mode": mode, **price_info,
     }
+
+
+def generate_ha_summary(settings, group, mode=None, manual_year=None, manual_month=None):
+    start, end, next_period_start, mode = _resolve_report_period(settings, group, mode, manual_year, manual_month)
+    sources = group.get("ha_sources", [])
+    if not sources:
+        raise ValueError("In dieser Home-Assistant-Gruppe sind noch keine Entitäten konfiguriert.")
+    price_info = price_info_for_group(settings, group, start.year)
+    price = float(price_info["price_eur_kwh"])
+    source_rows, rows_html = [], []
+    total_energy = 0.0
+    for source in sources:
+        try:
+            energy, method, unit = calculate_ha_source_consumption(source, start, next_period_start)
+        except Exception as err:
+            if bool(source.get("include_in_total", True)):
+                raise ValueError(f"Quelle {source.get('label') or source.get('entity_id')}: {err}") from err
+            energy, method, unit = 0.0, f"Nicht verfügbar: {err}", str(source.get("unit") or "")
+        include = bool(source.get("include_in_total", True))
+        cost = round(float(energy) * price, 2)
+        if include:
+            total_energy += float(energy)
+        row = {
+            "entity_id": source.get("entity_id", ""), "label": source.get("label") or source.get("entity_id", ""),
+            "mode": source.get("mode", "auto"), "unit": unit, "include_in_total": include,
+            "energy_kwh": float(energy), "energy_kwh_formatted": format_de_number(energy),
+            "cost": cost, "cost_formatted": format_de_number(cost), "calculation_method": method,
+        }
+        source_rows.append(row)
+        rows_html.append(f"<tr><td>{row['label']}</td><td>{row['entity_id']}</td><td>{row['energy_kwh_formatted']}</td><td>{row['cost_formatted']} €</td><td>{'enthalten' if include else 'nur Detail'}</td></tr>")
+    total_cost = round(total_energy * price, 2)
+    return {
+        "group_type": "homeassistant", "rows_html": "\n".join(rows_html), "sessions": [], "vehicle_groups": [], "ha_sources": source_rows,
+        "total_energy": total_energy, "total_cost": total_cost, "total_energy_kwh": f"{format_de_number(total_energy)} kWh",
+        "total_cost_eur": f"{format_de_number(total_cost)} €", "total_energy_formatted": format_de_number(total_energy),
+        "total_cost_formatted": format_de_number(total_cost), "period_start": start, "period_end": end,
+        "period_start_str": start.strftime('%d.%m.%Y'), "period_end_str": end.strftime('%d.%m.%Y'), "billing_mode": mode, **price_info,
+    }
+
+
+def generate_rows_and_summary(settings, group, mode=None, manual_year=None, manual_month=None):
+    if str(group.get("group_type", "evcc")) == "homeassistant":
+        return generate_ha_summary(settings, group, mode=mode, manual_year=manual_year, manual_month=manual_month)
+    return generate_evcc_summary(settings, group, mode=mode, manual_year=manual_year, manual_month=manual_month)
+
 
 def render_html(settings, group, mode=None, manual_year=None, manual_month=None):
     summary = generate_rows_and_summary(settings, group, mode=mode, manual_year=manual_year, manual_month=manual_month)
@@ -1259,6 +1688,9 @@ def render_html(settings, group, mode=None, manual_year=None, manual_month=None)
         "rows_html": summary["rows_html"],
         "sessions": summary["sessions"],
         "vehicle_groups": summary["vehicle_groups"],
+        "ha_sources": summary.get("ha_sources", []),
+        "group_name": group.get("name", ""),
+        "group_type": summary.get("group_type", group.get("group_type", "evcc")),
         "total_energy_kwh": summary["total_energy_kwh"],
         "total_cost_eur": summary["total_cost_eur"],
         "total_energy": summary["total_energy_formatted"],
@@ -1295,7 +1727,7 @@ def generate_pdf(settings, group, mode=None, manual_year=None, manual_month=None
     ensure_dirs()
     html, summary = render_html(settings, group, mode=mode, manual_year=manual_year, manual_month=manual_month)
     safe_group = re.sub(r"[^A-Za-z0-9_-]+","_", group["name"]).strip("_") or "gruppe"
-    filename = f"evcc_abrechnung_{safe_group}_{summary['period_start'].strftime('%Y%m%d')}_{summary['period_end'].strftime('%Y%m%d')}.pdf"
+    filename = f"energie_abrechnung_{safe_group}_{summary['period_start'].strftime('%Y%m%d')}_{summary['period_end'].strftime('%Y%m%d')}.pdf"
     out = REPORT_DIR / filename
     HTML(string=html).write_pdf(str(out))
     return out, summary
@@ -1429,6 +1861,16 @@ def refresh_assets():
         flash(f"Einträge konnten nicht geladen werden: {err}", "error")
     return redirect(f"{get_ingress_path()}/groups")
 
+@app.route("/refresh_ha_entities", methods=["POST"])
+def refresh_ha_entities_route():
+    try:
+        entities = fetch_ha_entities()
+        flash(f"Home-Assistant-Entitäten aktualisiert: {len(entities)} geeignete Quellen gefunden.", "success")
+    except Exception as err:
+        flash(f"Home-Assistant-Entitäten konnten nicht geladen werden: {err}", "error")
+    return redirect(f"{get_ingress_path()}/groups")
+
+
 @app.route("/groups", methods=["GET","POST"])
 def groups_page():
     settings = load_settings()
@@ -1453,9 +1895,16 @@ def groups_page():
         group["recipient_street"] = request.form.get("recipient_street","").strip()
         group["recipient_zip"] = request.form.get("recipient_zip","").strip()
         group["recipient_city"] = request.form.get("recipient_city","").strip()
+        group["group_type"] = request.form.get("group_type", "evcc").strip().lower()
+        group["group_icon"] = request.form.get("group_icon", "auto").strip().lower()
         group["vehicles"] = [v for v in request.form.getlist("vehicles") if v.strip()]
+        try:
+            raw_sources = json.loads(request.form.get("ha_sources_json", "[]") or "[]")
+        except Exception:
+            raw_sources = []
+        group["ha_sources"] = [normalize_ha_source(src) for src in raw_sources if isinstance(src, dict)]
         group["grid_price_override"] = request.form.get("grid_price_override","").strip()
-        group["grid_price_mode"] = "bmf" if parse_bool(request.form.get("grid_price_bmf")) else "manual"
+        group["grid_price_mode"] = "bmf" if group["group_type"] == "evcc" and parse_bool(request.form.get("grid_price_bmf")) else "manual"
         group["sender_mode"] = request.form.get("sender_mode","default").strip()
         group["custom_sender"] = {
             "name": request.form.get("custom_sender_name","").strip(),
@@ -1498,7 +1947,9 @@ def groups_page():
         current_bmf = resolve_bmf_rate(datetime.today().year)
     except Exception:
         current_bmf = None
-    return render_template("groups.html", settings=settings, edit_group=edit_group, current_bmf=current_bmf)
+    ha_cache = load_ha_entity_cache()
+    return render_template("groups.html", settings=settings, edit_group=edit_group, current_bmf=current_bmf,
+                           ha_entities=ha_cache.get("entities", []), ha_entities_updated=ha_cache.get("updated_at", ""))
 
 
 
