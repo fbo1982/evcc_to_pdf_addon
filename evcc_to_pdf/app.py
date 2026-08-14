@@ -1,3 +1,4 @@
+import atexit
 import base64
 import csv
 import hashlib
@@ -29,7 +30,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from weasyprint import HTML
 
 APP_PORT = 8099
-SETTINGS_DIR = Path(os.environ.get("EVCC_TO_PDF_SETTINGS_DIR", "/config"))
+SETTINGS_DIR = Path(os.environ.get("EVCC_TO_PDF_SETTINGS_DIR", "/data/evcc_to_pdf"))
 SETTINGS_FILE = SETTINGS_DIR / "settings.json"
 BACKUP_DIR = SETTINGS_DIR / "backups"
 BMF_PRICE_CACHE_FILE = SETTINGS_DIR / "bmf_price_cache.json"
@@ -37,14 +38,31 @@ HA_ENTITY_CACHE_FILE = SETTINGS_DIR / "ha_entity_cache.json"
 HA_API_BASE = os.environ.get("HA_API_BASE", "http://supervisor/core/api").rstrip("/")
 HA_WS_URL = os.environ.get("HA_WS_URL", "ws://supervisor/core/websocket")
 LEGACY_SETTINGS_FILES = [
+    # v1.2.x / v1.3.0-v1.3.02: public app config was mounted to /config.
+    Path("/config/settings.json"),
+    # Transitional/experimental paths used by older project builds.
+    Path("/app_config/settings.json"),
     Path("/addon_config/evcc_to_pdf/settings.json"),
-    Path("/data/evcc_to_pdf/settings.json"),
+    Path("/addon_config/settings.json"),
     Path("/data/settings.json"),
+]
+LEGACY_STORAGE_DIRS = [
+    Path("/config"),
+    Path("/app_config"),
+    Path("/addon_config/evcc_to_pdf"),
+    Path("/addon_config"),
+    Path("/data"),
 ]
 REPORT_DIR = Path("/share/evcc-pdfs")
 OPTIONS_FILE = Path("/data/options.json")
 DEFAULT_TEMPLATE_KEY = "default"
 DEFAULT_TEMPLATE_LABEL = "Standard HTML"
+_log_level_name = str(os.environ.get("LOG_LEVEL", "INFO")).upper()
+_log_level = getattr(logging, _log_level_name, logging.INFO)
+logging.basicConfig(
+    level=_log_level,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
 LOGGER = logging.getLogger("evcc_to_pdf")
 DESTatis_TABLE_CODE = "61243-0001"
 DESTatis_CSV_URL = "https://www-genesis.destatis.de/genesis-old/downloads/00/tables/61243-0001_00.csv"
@@ -63,7 +81,7 @@ BMF_RATE_CATALOG = {
         "source": "BMF/Destatis",
     },
 }
-APP_VERSION = "1.3.02"
+APP_VERSION = "1.3.03"
 
 DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
 <html lang="de">
@@ -451,21 +469,91 @@ def _restore_latest_backup():
             return data
     return None
 
+def _copy_legacy_sidecars(source_dir):
+    """Copy recoverable caches/backups from an older storage directory into /data.
+
+    Existing v1.3.03 files always win. The old storage is never modified so an update
+    can be rolled back without destroying the previous configuration.
+    """
+    source_dir = Path(source_dir)
+    try:
+        for filename, target in (
+            ("bmf_price_cache.json", BMF_PRICE_CACHE_FILE),
+            ("ha_entity_cache.json", HA_ENTITY_CACHE_FILE),
+        ):
+            source = source_dir / filename
+            if source.exists() and not target.exists() and _read_json_file(source) is not None:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+                LOGGER.info("Legacy-Datei %s nach %s übernommen.", source, target)
+
+        source_backup_dir = source_dir / "backups"
+        if source_backup_dir.is_dir():
+            BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+            for source in sorted(source_backup_dir.glob("settings_*.json")):
+                if _read_json_file(source) is None:
+                    continue
+                target = BACKUP_DIR / source.name
+                if not target.exists():
+                    shutil.copy2(source, target)
+    except Exception as err:
+        LOGGER.warning("Legacy-Nebenfiles aus %s konnten nicht vollständig migriert werden: %s", source_dir, err)
+
+
+def _read_latest_valid_backup(backup_dir):
+    backup_dir = Path(backup_dir)
+    if not backup_dir.is_dir():
+        return None, None
+    for backup in sorted(backup_dir.glob("settings_*.json"), reverse=True):
+        data = _read_json_file(backup)
+        if data is not None:
+            return data, backup
+    return None, None
+
+
 def _migrate_legacy_settings():
+    """Recover settings from all previously used storage locations before defaults exist."""
     if SETTINGS_FILE.exists():
         return None
-    for legacy in LEGACY_SETTINGS_FILES:
-        if legacy == SETTINGS_FILE or not legacy.exists():
-            continue
-        data = _read_json_file(legacy)
-        if data is None:
-            continue
+
+    ensure_dirs()
+    checked = set()
+    candidates = list(LEGACY_SETTINGS_FILES)
+    for legacy_dir in LEGACY_STORAGE_DIRS:
+        candidate = legacy_dir / "settings.json"
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    for legacy in candidates:
         try:
+            legacy = Path(legacy)
+            key = str(legacy)
+            if key in checked or legacy == SETTINGS_FILE:
+                continue
+            checked.add(key)
+            if not legacy.exists():
+                continue
+            data = _read_json_file(legacy)
+            source = legacy
+            if data is None:
+                data, backup = _read_latest_valid_backup(legacy.parent / "backups")
+                if data is None:
+                    LOGGER.warning("Legacy-Einstellungen in %s sind ungültig und es wurde kein gültiges Backup gefunden.", legacy)
+                    continue
+                source = backup
+                LOGGER.warning("Ungültige Legacy-settings.json; verwende Backup %s.", backup)
+
             _atomic_write_json(SETTINGS_FILE, data)
-            LOGGER.warning("Legacy-Einstellungen von %s nach %s migriert.", legacy, SETTINGS_FILE)
+            _copy_legacy_sidecars(legacy.parent)
+            LOGGER.warning("Legacy-Einstellungen von %s nach %s migriert.", source, SETTINGS_FILE)
             return data
-        except Exception:
-            continue
+        except Exception as err:
+            LOGGER.warning("Legacy-Migration von %s fehlgeschlagen: %s", legacy, err)
+
+    # Auch wenn settings.json am alten Ort bereits fehlt, können Cache/Backups noch nützlich sein.
+    for legacy_dir in LEGACY_STORAGE_DIRS:
+        if Path(legacy_dir) != SETTINGS_DIR:
+            _copy_legacy_sidecars(legacy_dir)
     return None
 
 def load_local_settings():
@@ -487,6 +575,12 @@ def load_local_settings():
             LOGGER.error("Beschädigte settings.json wurde zur Analyse nach %s verschoben.", corrupt_copy.name)
         except Exception:
             pass
+        # Solange ein Legacy-Mount vorhanden ist, ist er die letzte Rettungsquelle vor
+        # MQTT oder Werkseinstellungen. Das verhindert einen Reset bei gleichzeitig
+        # beschädigter neuer settings.json und fehlendem neuen Backup.
+        migrated = _migrate_legacy_settings()
+        if migrated is not None:
+            return migrated
     return None
 
 def save_local_settings(settings, with_backup=True):
@@ -746,10 +840,10 @@ def sync_settings_to_mqtt(settings):
 def load_settings():
     ensure_dirs()
     local_raw = load_local_settings()
-    if local_raw:
+    if local_raw is not None:
         return normalize_settings(local_raw)
     mqtt_settings = settings_from_mqtt()
-    if mqtt_settings:
+    if mqtt_settings is not None:
         save_local_settings(mqtt_settings, with_backup=False)
         return mqtt_settings
     settings = normalize_settings(DEFAULT_SETTINGS)
@@ -2004,33 +2098,65 @@ def send_email_with_attachment(settings, group, pdf_path, summary):
                 server.login(user, password)
             send_via_server(server)
 
+_BACKGROUND_STOP_EVENT = threading.Event()
+_BACKGROUND_LOCK = threading.Lock()
+_SCHEDULER_THREAD = None
+
+
 def scheduler_loop():
-    while True:
+    LOGGER.info("Scheduler gestartet.")
+    while not _BACKGROUND_STOP_EVENT.is_set():
         try:
             settings = load_settings()
             if settings.get("scheduler", {}).get("enabled"):
                 now = datetime.now()
-                hhmm = settings["scheduler"].get("time","07:00")
-                default_day = int(settings["scheduler"].get("day_of_month",1))
+                hhmm = settings["scheduler"].get("time", "07:00")
+                default_day = int(settings["scheduler"].get("day_of_month", 1))
                 current_tag = now.strftime("%Y-%m-%d")
                 if now.strftime("%H:%M") >= hhmm and settings["scheduler"].get("last_run") != current_tag:
                     sent = False
                     for group in settings.get("groups", []):
-                        if not group.get("active"): continue
+                        if not group.get("active"):
+                            continue
                         send_day = int(group.get("send_day", default_day) or default_day)
-                        if now.day != send_day: continue
+                        if now.day != send_day:
+                            continue
                         try:
                             pdf_path, summary = generate_pdf(settings, group)
                             send_email_with_attachment(settings, group, pdf_path, summary)
                             sent = True
-                        except Exception:
-                            pass
+                        except Exception as err:
+                            LOGGER.exception("Automatische Abrechnung für Gruppe %s fehlgeschlagen: %s", group.get("name") or group.get("id"), err)
                     if sent:
                         settings["scheduler"]["last_run"] = current_tag
                         save_settings(settings)
-        except Exception:
-            pass
-        time.sleep(60)
+        except Exception as err:
+            LOGGER.exception("Scheduler-Durchlauf fehlgeschlagen: %s", err)
+        _BACKGROUND_STOP_EVENT.wait(60)
+    LOGGER.info("Scheduler beendet.")
+
+
+def start_background_services():
+    """Start background services exactly once per WSGI worker."""
+    global _SCHEDULER_THREAD
+    ensure_dirs()
+    with _BACKGROUND_LOCK:
+        if _SCHEDULER_THREAD is not None and _SCHEDULER_THREAD.is_alive():
+            return
+        _BACKGROUND_STOP_EVENT.clear()
+        _SCHEDULER_THREAD = threading.Thread(
+            target=scheduler_loop,
+            name="evcc-to-pdf-scheduler",
+            daemon=True,
+        )
+        _SCHEDULER_THREAD.start()
+
+
+def stop_background_services():
+    _BACKGROUND_STOP_EVENT.set()
+
+
+atexit.register(stop_background_services)
 
 @app.route("/")
 def dashboard():
@@ -2076,8 +2202,10 @@ def refresh_assets():
         settings["cached_assets"] = fetch_available_assets(settings)
         save_settings(settings)
         (REPORT_DIR / "available_assets.txt").write_text("\n".join(settings["cached_assets"]), encoding="utf-8")
+        LOGGER.info("EVCC-Assets aktualisiert: %s Einträge.", len(settings["cached_assets"]))
         flash(f"{len(settings['cached_assets'])} Einträge geladen.", "success")
     except Exception as err:
+        LOGGER.exception("EVCC-Assets konnten nicht aktualisiert werden: %s", err)
         flash(f"Einträge konnten nicht geladen werden: {err}", "error")
     return redirect(f"{get_ingress_path()}/groups")
 
@@ -2085,8 +2213,10 @@ def refresh_assets():
 def refresh_ha_entities_route():
     try:
         entities = fetch_ha_entities()
+        LOGGER.info("Home-Assistant-Entitäten aktualisiert: %s geeignete Verbrauchssensoren.", len(entities))
         flash(f"Home-Assistant-Entitäten aktualisiert: {len(entities)} geeignete Quellen gefunden.", "success")
     except Exception as err:
+        LOGGER.exception("Home-Assistant-Entitäten konnten nicht geladen werden: %s", err)
         flash(f"Home-Assistant-Entitäten konnten nicht geladen werden: {err}", "error")
     return redirect(f"{get_ingress_path()}/groups")
 
@@ -2294,6 +2424,6 @@ def report_page():
     )
 
 if __name__ == "__main__":
-    ensure_dirs()
-    threading.Thread(target=scheduler_loop, daemon=True).start()
+    # Entwicklungs-Fallback. Produktiv wird die App über Gunicorn (wsgi.py) gestartet.
+    start_background_services()
     app.run(host="0.0.0.0", port=APP_PORT)

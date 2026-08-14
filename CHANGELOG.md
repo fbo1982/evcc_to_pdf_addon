@@ -2,6 +2,34 @@
 
 Alle relevanten Änderungen an **EVCC to PDF** werden hier versionsweise dokumentiert.
 
+## v1.3.03 – 14.08.2026
+
+### Persistenz & Update-Sicherheit
+- Primärer Datenspeicher auf **`/data/evcc_to_pdf`** umgestellt. Dort liegen `settings.json`, Backups sowie BMF- und HA-Entity-Caches.
+- Vor dem Erzeugen von Werkseinstellungen werden alle bekannten älteren Speicherorte geprüft.
+- Einstellungen aus v1.3.02 und älteren Versionen werden von `/config/settings.json` und weiteren Legacy-Pfaden automatisch nach `/data/evcc_to_pdf/settings.json` migriert.
+- Ist eine alte `settings.json` beschädigt, wird zusätzlich nach einem gültigen Legacy-Backup gesucht und dieses zur Migration verwendet.
+- Vorhandene Legacy-Backups und gültige Cache-Dateien werden übernommen, ohne die alten Dateien zu löschen.
+- Atomare Speicherung und die letzten 20 gültigen Backups bleiben erhalten.
+
+### Home-Assistant-App-Lifecycle
+- `startup` von `services` auf **`application`** geändert, da EVCC to PDF auf Home Assistant und dessen API aufbaut.
+- `init: false` entfernt; der Supervisor kann wieder sein Standard-Init verwenden.
+- Supervisor-Stop-Timeout auf 20 Sekunden gesetzt.
+- Legacy-Mount `addon_config` auf **`app_config`** umgestellt. Der Kompatibilitäts-Mount wird read-only unter `/config` eingebunden, damit alte Einstellungen während des Updates noch migriert werden können.
+
+### Webserver & Logging
+- Flask-Entwicklungsserver durch **Gunicorn** ersetzt.
+- Ein Gunicorn-Worker mit vier Threads verhindert mehrfach gestartete Scheduler und erlaubt parallele Webanfragen.
+- Scheduler wird über einen WSGI-Einstiegspunkt genau einmal pro Worker gestartet und beim Prozessende sauber beendet.
+- Fehler beim Aktualisieren von EVCC-Assets und Home-Assistant-Entitäten werden jetzt zusätzlich mit Stacktrace ins App-Log geschrieben.
+- Scheduler-Fehler werden nicht mehr still verworfen, sondern protokolliert.
+
+### Kompatibilität
+- Abrechnungsmodell aus v1.3.02 unverändert beibehalten: beliebig viele Sensor-Abrechnungsgruppen, beliebig viele Verbrauchssensoren, gemeinsame Preislogik und transparente Einzelausgabe der Fahrzeuge.
+- Individuell bearbeitete Templates bleiben unverändert.
+- Versionsnummer auf **v1.3.03** angehoben.
+
 ## v1.3.02 – 14.08.2026
 
 ### Beliebig viele Sensor-Abrechnungsgruppen

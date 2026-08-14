@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.3.02-22c55e">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.3.03-22c55e">
   <img alt="Home Assistant" src="https://img.shields.io/badge/Home%20Assistant-App-41BDF5">
   <img alt="EVCC" src="https://img.shields.io/badge/EVCC-compatible-00c853">
   <img alt="Homeoffice" src="https://img.shields.io/badge/Homeoffice-Energieabrechnung-1597ff">
@@ -23,7 +23,17 @@ Beispiel für eine einzige Abrechnung:
 
 Alle Positionen verwenden denselben Abrechnungszeitraum und denselben Strompreis. In der PDF werden die Home-Assistant-Sensoren **nicht einzeln offengelegt**: Dort erscheinen nur die Namen und Summen ihrer Abrechnungsgruppen. Fahrzeuge werden weiterhin einzeln mit Ladevorgängen und Fahrzeug-Zwischensummen aufgelistet.
 
-## Neu in v1.3.02
+## Neu in v1.3.03
+
+- persistente App-Daten jetzt unter `/data/evcc_to_pdf`
+- automatische Migration von v1.3.02 und älteren Speicherorten inklusive gültiger Backups
+- Gunicorn statt Flask-Entwicklungsserver
+- saubererer App-Start/-Stop und `startup: application`
+- aktueller `app_config`-Kompatibilitätsmount für die einmalige Übernahme alter `/config`-Daten
+- ausführlichere Fehlerlogs für HA- und EVCC-Aktualisierungen
+- das Abrechnungsmodell aus v1.3.02 bleibt unverändert
+
+## Abrechnungsmodell seit v1.3.02
 
 - beliebig viele benannte **Sensor-Abrechnungsgruppen** innerhalb einer Abrechnung
 - beliebig viele HA-Verbrauchssensoren je Gruppe

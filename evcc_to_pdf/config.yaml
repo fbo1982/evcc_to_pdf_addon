@@ -1,11 +1,11 @@
 name: "EVCC to PDF"
 description: "Modulare Energieabrechnung aus EVCC und Home Assistant mit PDF und E-Mail-Versand"
-version: "1.3.02"
+version: "1.3.03"
 slug: "evcc_to_pdf"
 url: "https://github.com/fbo1982/evcc_to_pdf_addon"
-startup: services
+startup: application
 boot: auto
-init: false
+timeout: 20
 
 arch:
   - amd64
@@ -18,8 +18,11 @@ panel_title: "EVCC to PDF"
 panel_icon: "mdi:home-lightning-bolt-outline"
 
 map:
-  - type: addon_config
-    read_only: false
+  # Read-only compatibility mount: allows v1.3.03 to migrate settings created by
+  # v1.3.02 and older from /config into the persistent /data/evcc_to_pdf store.
+  - type: app_config
+    read_only: true
+    path: /config
   - type: share
     read_only: false
 

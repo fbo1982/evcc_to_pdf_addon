@@ -1,4 +1,4 @@
-# EVCC to PDF – Dokumentation v1.3.02
+# EVCC to PDF – Dokumentation v1.3.03
 
 ## 1. Grundprinzip
 
@@ -88,8 +88,23 @@ Das unveränderte v1.3.01-Standardtemplate wird auf die neue Gruppensummen-Darst
 
 ## 10. Persistenz
 
-Einstellungen werden persistent unter `/config` gespeichert, atomar geschrieben und gesichert. Bei beschädigter Hauptdatei wird zuerst versucht, ein gültiges Backup wiederherzustellen.
+Einstellungen werden ab v1.3.03 im Home-Assistant-App-Datenbereich unter `/data/evcc_to_pdf` gespeichert. Dazu gehören:
 
-## 11. Release-Checkliste
+- `settings.json`
+- `backups/settings_*.json`
+- `bmf_price_cache.json`
+- `ha_entity_cache.json`
+
+Beim ersten Start nach einem Update wird vor dem Anlegen von Werkseinstellungen nach älteren Konfigurationen gesucht. v1.3.02 und ältere Installationen mit `/config/settings.json` werden automatisch übernommen. Ist die alte Hauptdatei beschädigt, wird zusätzlich nach einem gültigen Backup gesucht. Alte Dateien werden bei der Migration nicht gelöscht.
+
+Der `app_config`-Mount bleibt in v1.3.03 read-only unter `/config` eingebunden, damit diese Migration zuverlässig durchgeführt werden kann. Neue Laufzeitdaten werden ausschließlich unter `/data/evcc_to_pdf` geschrieben.
+
+## 11. Webserver & App-Lifecycle
+
+Die Weboberfläche wird produktiv über Gunicorn mit einem Worker und vier Threads ausgeliefert. Dadurch läuft der interne Scheduler genau einmal, während mehrere Webanfragen parallel verarbeitet werden können. Die App startet als `application`, also nach Home Assistant, und verwendet wieder den Standard-Init des Supervisors.
+
+Fehler beim Laden von Home-Assistant-Verbrauchssensoren oder EVCC-Assets werden zusätzlich im App-Log protokolliert.
+
+## 12. Release-Checkliste
 
 Die für Folgeversionen verbindlichen Projektregeln stehen zusätzlich in der Root-Datei `RELEASE_CHECKLIST.md`.

@@ -1,10 +1,18 @@
-# EVCC to PDF v1.3.02
+# EVCC to PDF v1.3.03
 
 Modulare Energieabrechnung für **EVCC + Home Assistant**.
 
 Eine Abrechnung kann beliebig viele frei benannte Home-Assistant-Sensorgruppen und zusätzlich einzelne EVCC-Fahrzeuge enthalten. Für alles gilt derselbe Zeitraum und Strompreis.
 
-## Neu in v1.3.02
+## Neu in v1.3.03
+
+- persistente Konfiguration unter `/data/evcc_to_pdf`
+- automatische Übernahme vorhandener v1.3.02-Konfiguration und gültiger Backups
+- Gunicorn als produktiver Webserver
+- aktueller Home-Assistant-App-Lifecycle (`startup: application`)
+- bessere Fehlerprotokollierung bei HA-/EVCC-Aktualisierungen
+
+## Abrechnungsmodell
 
 - beliebig viele Sensor-Abrechnungsgruppen wie `HomeOffice`, `Server`, `Klimaanlage`
 - beliebig viele Energie-/Leistungssensoren je Gruppe

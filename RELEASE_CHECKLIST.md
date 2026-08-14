@@ -5,9 +5,9 @@ Diese Regeln sollen bei allen weiteren Änderungen am Projekt beibehalten werden
 ## Daten & Update-Sicherheit
 
 - Bestehende Benutzerdaten niemals stillschweigend auf Werkseinstellungen zurücksetzen.
-- Persistente Konfiguration ausschließlich im dafür vorgesehenen Home-Assistant-App-Konfigurationsbereich speichern.
-- Einstellungen atomar schreiben und gültige Backups erhalten.
-- Neue Datenstrukturen mit einer rückwärtskompatiblen Migration versehen.
+- Persistente Laufzeitdaten ausschließlich unter `/data/evcc_to_pdf` speichern; `/config`/`app_config` nur als Legacy-/Benutzerdatei-Mount verwenden.
+- Einstellungen atomar schreiben und gültige Backups unter `/data/evcc_to_pdf/backups` erhalten.
+- Neue Datenstrukturen oder Speicherpfade mit einer rückwärtskompatiblen Migration versehen; Defaults erst erzeugen, wenn kein gültiger aktueller oder Legacy-Datensatz/Backup existiert.
 - Migrationen müssen Empfänger, Preise, Fahrzeuge, Sensoren, Maildaten und individuelle Einstellungen erhalten.
 
 ## Templates
@@ -33,6 +33,8 @@ Diese Regeln sollen bei allen weiteren Änderungen am Projekt beibehalten werden
 
 - `APP_VERSION` aktualisieren.
 - `config.yaml` aktualisieren.
+- produktiven WSGI-Start und genau einen Scheduler-Prozess prüfen.
+- Home-Assistant-App-Lifecycle (`startup`, `init`, Mount-Typen) auf aktuelle Supervisor-Warnungen prüfen.
 - README, App-README, DOCS und CHANGELOG aktualisieren.
 - Versionsbadge aktualisieren.
 - Python-Syntax prüfen.
