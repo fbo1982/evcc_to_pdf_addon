@@ -1,5 +1,29 @@
 # Changelog
 
+Alle relevanten Änderungen an **EVCC to PDF** werden hier versionsweise dokumentiert.
+
+## v1.2.02
+
+### Branding & Home Assistant
+- Neues EVCC-to-PDF-App-Icon hinzugefügt (`icon.png`, 128×128).
+- Neues Home-Assistant-App-Logo hinzugefügt (`logo.png`, 250×100).
+- Weboberfläche zeigt das neue Logo-Icon direkt im Kopfbereich.
+- Favicon für die Weboberfläche ergänzt.
+- Branding bewusst ohne fest eingebrannte Versionsnummer aufgebaut, damit es bei zukünftigen Releases weiterverwendet werden kann.
+
+### Dokumentation
+- Root-README vollständig überarbeitet und für die öffentliche GitHub-Seite aufbereitet.
+- Hero-Grafik, Funktionsübersicht, Schnellstart, Screenshots, Persistenz- und Template-Hinweise ergänzt.
+- Home-Assistant-App-README auf eine kompakte Store-Beschreibung zugeschnitten.
+- Neue `DOCS.md` mit ausführlicher Bedienungs- und Konfigurationsdokumentation ergänzt.
+- Changelog strukturiert und Branding-Release dokumentiert.
+
+## v1.2.01
+
+- Versionsanzeige im Kopfbereich der Weboberfläche ergänzt.
+- Die angezeigte Version wird zentral aus `APP_VERSION` übernommen.
+- Add-on-Version auf **v1.2.01** angehoben.
+
 ## v1.2.0
 
 - Persistenzfehler behoben: `addon_config` wird in Home Assistant unter `/config` in den Container gemountet; Einstellungen werden jetzt dort statt im nicht persistenten `/addon_config/...` gespeichert.
@@ -18,7 +42,6 @@
 
 ## v1.1.2
 
-- Version auf **v1.1.2** angehoben.
 - Fix für das mitgelieferte Standard-Template: verhält sich jetzt wie ein normales Benutzer-Template.
 - Änderungen im Editor werden für das Standard-Template gespeichert.
 - Standard-Template kann gelöscht werden, sobald ein anderes Template als Default gesetzt ist.
@@ -26,53 +49,25 @@
 
 ## v1.1.1
 
-- Version auf **v1.1.1** angehoben.
-- Das bisherige **Standard-Template** wird nun als Editor-kompatibles Template ausgeliefert.
-- Standard-Template enthält jetzt bereits strukturierte Editor-Bausteine mit den vorhandenen EVCC-/Jinja-Platzhaltern, sodass es direkt im grafischen Editor bearbeitet werden kann.
+- Standard-Template als Editor-kompatibles Template ausgeliefert.
+- Strukturierte Editor-Bausteine mit EVCC-/Jinja-Platzhaltern ergänzt.
 - Bestehende Installationen erhalten für das Default-Template automatisch die editorfähige Standardstruktur.
-- Das mitgelieferte Standard-Template verhält sich jetzt wie ein normales Benutzer-Template: Änderungen aus dem Editor bleiben erhalten und es kann gelöscht werden, sobald ein anderes Template als Default gesetzt wurde.
-- Das ausgelieferte Standard-Template verwendet jetzt den bereitgestellten HTML-Inhalt als Startvorlage.
+- Standard-Template kann wie ein Benutzer-Template gespeichert und – mit anderem Default – gelöscht werden.
 
 ## v1.1.0
 
-✨ Grafischer Template-Editor integriert
-
-### Features
-- Neuer visueller Editor für HTML-Templates
-- Button "Im Editor" in der Template-Liste
-- Drag-&-Drop-Bausteine für strukturierte Layouts
-- Live-Vorschau im Editor
-- Speicherung kompatibel zum bestehenden Template-System
-
-### Improvements
-- Bestehende Templates können weiterhin als freies HTML bearbeitet werden
-- Bessere Grundlage für EVCC-spezifische Berichtsvorlagen
-
----
+- Grafischen Template-Editor integriert.
+- Drag-&-Drop-Bausteine und Live-Vorschau ergänzt.
+- Bestehende Templates können weiterhin als freies HTML bearbeitet werden.
 
 ## v1.0.2
 
-🚀 First stable release
-
-### Features
-- Automatische Abrechnung
-- Gruppenverwaltung
-- HTML Templates
-- PDF-Erstellung
-- E-Mail Versand
-- Scheduler
-
-### Fixes
-- Template Rendering
-- Datenfilterung
-- Safe Storage stabilisiert
-
----
+- Erste stabile Version mit automatischer Abrechnung, Gruppenverwaltung, HTML-Templates, PDF-Erstellung, E-Mail-Versand und Scheduler.
 
 ## v0.7.0
-- Automatik eingeführt
+
+- Automatik eingeführt.
 
 ## v0.6.x
-- PDF Layout
-- Templates
-- Gruppenlogik
+
+- PDF-Layout, Templates und Gruppenlogik aufgebaut.

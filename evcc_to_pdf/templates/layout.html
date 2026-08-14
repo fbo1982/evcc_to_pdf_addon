@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{ title or "EVCC to PDF" }}</title>
+  <link rel="icon" type="image/png" href="{{ ingress_path }}/static/favicon.png">
   <link rel="stylesheet" href="{{ ingress_path }}/static/style.css">
   <script>
     function toggleSection(selectId, value, targetId) {
@@ -17,7 +18,16 @@
 <body>
   <header class="topbar">
     <div class="container topbar-inner">
-      <h1>EVCC to PDF</h1>
+      <div class="brand">
+        <img class="brand-icon" src="{{ ingress_path }}/static/icon.png" alt="EVCC to PDF Logo">
+        <div class="brand-copy">
+          <div class="brand-title-row">
+            <h1>EVCC to PDF</h1>
+            <span class="version-badge">v{{ app_version }}</span>
+          </div>
+          <span class="brand-tagline">Laden · Abrechnen · Versenden</span>
+        </div>
+      </div>
       <nav class="nav">
         <a href="{{ ingress_path }}/">Dashboard</a>
         <a href="{{ ingress_path }}/settings">Einstellungen</a>

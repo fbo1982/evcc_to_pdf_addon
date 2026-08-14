@@ -1,108 +1,26 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/fbo1982/evcc_to_pdf_addon/main/docs/images/logo-wide.png" alt="EVCC to PDF" width="250">
+</p>
+
 # EVCC to PDF
 
-![Version](https://img.shields.io/badge/version-1.2.0-brightgreen)
-![Status](https://img.shields.io/badge/status-stable-success)
-![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Addon-blue)
-![License](https://img.shields.io/badge/license-MIT-lightgrey)
+Automatische PDF-Abrechnung von EVCC-Ladevorgängen für zuhause geladene Firmen- und Dienstfahrzeuge.
 
-Automatisierte Abrechnung von Ladevorgängen aus EVCC als PDF inklusive E-Mail Versand.
+## Funktionen
 
----
+- PDF-Abrechnungen aus EVCC
+- Gruppierung nach Fahrzeugen mit Zwischensummen
+- Manueller Strompreis oder automatische BMF-Strompreispauschale
+- Monatliche, quartalsweise, halbjährliche und jährliche Abrechnung
+- Automatischer E-Mail-Versand
+- Gruppenverwaltung und Scheduler
+- Bearbeitbare HTML-Templates mit grafischem Editor
+- Persistente Speicherung mit Backups
 
-## 💡 Ziel
+## Erste Schritte
 
-Ein einfaches, automatisches Abrechnungssystem für EV-Ladungen zu Hause.
+Nach dem Start **Weboberfläche öffnen**, zuerst EVCC und optional SMTP konfigurieren, danach eine Gruppe anlegen und über **Manuell** eine Vorschau erzeugen.
 
----
+Die vollständige Dokumentation befindet sich im Tab **Dokumentation** bzw. in `DOCS.md`.
 
-## 🔗 Repository
-
-https://github.com/fbo1982/evcc_to_pdf_addon.git
-
----
-
-## 🏠 Direkt in Home Assistant hinzufügen
-
-[![Add repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_addon_repository/?repository_url=https://github.com/fbo1982/evcc_to_pdf_addon.git)
-
----
-
-## ⚙️ Installation
-
-### Automatisch
-Button oben klicken
-
-### Manuell
-
-1. Einstellungen → Add-ons  
-2. Add-on Store  
-3. ⋮ → Repositories  
-4. hinzufügen: https://github.com/fbo1982/evcc_to_pdf_addon.git
-5. installieren & starten
-
----
-
-## 📸 Screenshots
-
-### Manuell
-![Manuell](docs/images/manual.png)
-
-### Gruppen
-![Gruppen](docs/images/groups.png)
-
-### Templates
-![Templates](docs/images/templates.png)
-
----
-
-## 🚀 Features
-
-- PDF-Abrechnung aus EVCC
-- Automatischer E-Mail Versand
-- Gruppenverwaltung
-- Strompreis je Gruppe wahlweise manuell oder automatische BMF-Strompreispauschale (Destatis 61243-0001)
-- Auswertung nach Fahrzeugen mit Zwischensummen
-- Abrechnungsmodi:
-  - Monatlich
-  - Quartal
-  - Halbjährlich
-  - Jährlich
-- Automatik (Scheduler)
-- HTML Templates
-- Bankdaten
-- CC an Absender
-- Persistente, atomare Speicherung mit Backups und MQTT-Fallback
-
----
-
-## 🔄 Automatik
-
-- berücksichtigt Gruppen (nur aktive)
-- verhindert doppelte Abrechnungen
-- basiert auf Zeiträumen
-
----
-
-## 🧪 Testbereich
-
-- Vorschau
-- manuelle PDF-Erstellung
-- Testversand
-
----
-
-## 📦 Releases
-
-👉 https://github.com/fbo1982/evcc_to_pdf_addon/releases
-
----
-
-## ⚠️ Hinweis
-
-Dieses Projekt ist produktiv nutzbar, wird aber aktiv weiterentwickelt.
-
----
-
-## 📄 Lizenz
-
-MIT License
+> EVCC to PDF ist ein technisches Abrechnungswerkzeug und keine Steuer- oder Rechtsberatung.

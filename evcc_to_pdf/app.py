@@ -55,7 +55,7 @@ BMF_RATE_CATALOG = {
         "source": "BMF/Destatis",
     },
 }
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.02"
 
 DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
 <html lang="de">
@@ -785,7 +785,7 @@ def get_ingress_path():
 @app.context_processor
 def inject_common():
     settings = load_settings()
-    return {"settings": settings, "ingress_path": get_ingress_path()}
+    return {"settings": settings, "ingress_path": get_ingress_path(), "app_version": APP_VERSION}
 
 def find_group(settings, group_id):
     for group in settings["groups"]:

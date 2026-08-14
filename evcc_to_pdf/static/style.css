@@ -20,6 +20,12 @@ body { margin:0; background:var(--bg); color:var(--text); font:16px/1.45 system-
 .topbar { background:#031232; border-bottom:1px solid rgba(138,174,230,.35); }
 .topbar-inner { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px; padding:16px 0; }
 .topbar h1 { margin:0; font-size:30px; color:#fff; }
+.brand { display:flex; align-items:center; gap:12px; min-width:0; }
+.brand-icon { width:54px; height:54px; border-radius:14px; flex:0 0 auto; box-shadow:0 6px 18px rgba(0,0,0,.22); }
+.brand-copy { display:grid; gap:2px; min-width:0; }
+.brand-title-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.brand-tagline { color:#8fdcff; font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; white-space:nowrap; }
+.version-badge { display:inline-flex; align-items:center; padding:4px 9px; border:1px solid rgba(72,199,255,.45); border-radius:999px; background:rgba(72,199,255,.10); color:#bfeeff; font-size:12px; line-height:1; font-weight:800; letter-spacing:.02em; white-space:nowrap; }
 .nav { display:flex; gap:18px; flex-wrap:wrap; }
 .nav a { color:var(--text); text-decoration:none; font-weight:600; }
 .nav a:hover { color:var(--accent); }
@@ -111,3 +117,9 @@ hr { border:0; border-top:1px solid rgba(122,166,232,.28); margin:18px 0; }
 .price-preview { padding:10px 12px; border:1px solid rgba(72,199,255,.35); border-radius:12px; background:rgba(72,199,255,.08); }
 .field-inactive { opacity:.55; }
 .field-inactive input { cursor:not-allowed; }
+
+@media (max-width: 620px) {
+  .brand-icon { width:46px; height:46px; border-radius:12px; }
+  .topbar h1 { font-size:24px; }
+  .brand-tagline { font-size:9px; letter-spacing:.08em; }
+}
