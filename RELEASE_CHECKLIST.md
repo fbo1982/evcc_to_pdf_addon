@@ -53,3 +53,10 @@ Diese Regeln sollen bei allen weiteren Änderungen am Projekt beibehalten werden
 - Sensoren werden ohne zusätzliche Zielgruppen-Auswahl automatisch der aktiven Gruppe zugeordnet.
 - Andere Gruppen dürfen beim Bearbeiten der aktiven Gruppe nicht als parallele Karten eingeblendet werden.
 - Fahrzeuge bleiben außerhalb der Sensorgruppen und werden im PDF weiterhin einzeln transparent ausgewiesen.
+
+## Strompreispauschale / PDF-Transparenz
+
+- BMF-Strompreispauschale immer als **Jahrespauschale** behandeln: für das gesamte Kalenderjahr gilt das 1. Halbjahr des Vorjahres; kein unterjähriger Wechsel auf neuere Halbjahreswerte.
+- Im Standard-PDF den gemeinsamen Strompreis nur einmal zentral im Summenblock ausweisen; Sensor-Abrechnungsgruppen zeigen nur Gruppenname, Verbrauch und Kosten.
+- Gesamtverbrauch und Gesamtkosten im Standard-PDF visuell hervorheben, ohne den restlichen Preisnachweis zu überladen.
+- Fahrzeuge bleiben weiterhin einzeln mit ihren Ladevorgängen und Fahrzeug-Zwischensummen transparent sichtbar.

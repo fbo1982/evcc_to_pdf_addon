@@ -71,6 +71,7 @@ LEGACY_DEFAULT_SOURCE_HASHES = {
     "e845ab04ca5c28a3cc6b9fd568a1b0900bef17922e97605c81f8427390b64f56",
     "392553cc7cb6beb2b9f469c94c5d68e67ed2dfa68e06cd4e145333d9adf7e449",  # v1.3.0 Standardtemplate
     "0efd4abbbeff1094e32b5410784a0399c1aa6a9de048a09c5b147ee05a20f27b",  # v1.3.01 Standardtemplate
+    "429f335f3ab897ee92a116f58ec76500750c82ecc115419b0ab6e7fa6de9c6f0",  # v1.3.04 Standardtemplate
 }
 BMF_RATE_CATALOG = {
     2026: {
@@ -81,7 +82,7 @@ BMF_RATE_CATALOG = {
         "source": "BMF/Destatis",
     },
 }
-APP_VERSION = "1.3.04"
+APP_VERSION = "1.3.05"
 
 DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
 <html lang="de">
@@ -112,6 +113,7 @@ DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
     .vehicle-total { margin: 7px 0 0; font-size: 9.4pt; }
     .summary { margin-top: 14px; padding: 12px; border: 1px solid #cbd5e1; background: #f8fbff; }
     .summary p { margin: 4px 0; }
+    .summary .total-line { margin: 5px 0; padding: 6px 9px; font-size: 11.2pt; font-weight: 700; background: #eef6ff; border-left: 3px solid #2563eb; }
     .price-info { margin-top: 12px; padding-top: 8px; border-top: 1px solid #cbd5e1; }
     .bank { margin-top: 20px; }
     .closing { margin-top: 24px; }
@@ -175,10 +177,9 @@ DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
     <table>
       <thead>
         <tr>
-          <th style="width:38%">Abrechnungsgruppe</th>
-          <th style="width:20%">Verbrauch</th>
-          <th style="width:22%">Strompreis</th>
-          <th style="width:20%">Kosten</th>
+          <th style="width:50%">Abrechnungsgruppe</th>
+          <th style="width:25%">Verbrauch</th>
+          <th style="width:25%">Kosten</th>
         </tr>
       </thead>
       <tbody>
@@ -186,7 +187,6 @@ DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
         <tr>
           <td><strong>{{ item.name }}</strong></td>
           <td>{{ item.total_energy_kwh }}</td>
-          <td>{{ electricity_price_eur_kwh }}</td>
           <td>{{ item.total_cost_eur }}</td>
         </tr>
       {% endfor %}
@@ -196,8 +196,8 @@ DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
   {% endif %}
 
   <div class="summary">
-    <p><strong>Gesamtverbrauch:</strong> {{ total_energy_kwh }}</p>
-    <p><strong>Gesamtkosten:</strong> {{ total_cost_eur }}</p>
+    <p class="total-line"><strong>Gesamtverbrauch:</strong> {{ total_energy_kwh }}</p>
+    <p class="total-line"><strong>Gesamtkosten:</strong> {{ total_cost_eur }}</p>
     <div class="price-info">
       <p><strong>Zugrunde gelegter Strompreis:</strong> {{ electricity_price_eur_kwh }}</p>
       {% if price_method_label %}<p><strong>Preisermittlung:</strong> {{ price_method_label }}</p>{% endif %}
@@ -1677,8 +1677,11 @@ def price_info_for_group(settings, group, billing_year):
             "price_eur_kwh": price,
             "price_eur_kwh_formatted": format_de_number(price, 2),
             "price_eur_kwh_label": f"{format_de_number(price, 2)} €/kWh",
-            "price_method_label": f"BMF-Strompreispauschale {billing_year}",
-            "price_source_label": f"Destatis, Statistik {DESTatis_TABLE_CODE}, 1. Halbjahr {source_year}",
+            "price_method_label": f"BMF-Strompreispauschale {billing_year} (Jahrespauschale)",
+            "price_source_label": (
+                f"Destatis, Statistik {DESTatis_TABLE_CODE}, 1. Halbjahr {source_year} "
+                f"(BMF-Basis für das Kalenderjahr {billing_year})"
+            ),
             "price_source_year": source_year,
             "price_raw_eur_kwh": float(info.get("raw_eur_kwh", price)),
         }

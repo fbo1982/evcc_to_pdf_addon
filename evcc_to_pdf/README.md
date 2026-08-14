@@ -1,17 +1,17 @@
-# EVCC to PDF v1.3.04
+# EVCC to PDF v1.3.05
 
 Modulare Energieabrechnung für **EVCC + Home Assistant**.
 
 Eine Abrechnung kann beliebig viele frei benannte Home-Assistant-Sensorgruppen und zusätzlich einzelne EVCC-Fahrzeuge enthalten. Für alles gilt derselbe Zeitraum und Strompreis.
 
-## Neu in v1.3.04
+## Neu in v1.3.05
 
-- Sensorgruppen werden über ein zentrales Dropdown ausgewählt
-- es wird immer nur die aktuell gewählte Sensorgruppe mit ihren Sensoren angezeigt
-- Gruppenname kann direkt in der ausgewählten Gruppe bearbeitet werden
-- neue Sensoren landen automatisch in der aktiven Gruppe
-- Sortieren und Löschen beziehen sich ebenfalls nur auf die ausgewählte Gruppe
-- bestehende v1.3.03-Konfigurationen bleiben unverändert kompatibel
+- **Weitere Abrechnungsgruppen** zeigt im PDF nur noch Gruppenname, Verbrauch und Kosten
+- Gesamtverbrauch und Gesamtkosten sind im Summenblock besser hervorgehoben
+- der gemeinsame Strompreis steht weiterhin einmal zentral im Summenblock
+- die BMF-/Destatis-Grundlage wird als Jahrespauschale klarer erklärt
+- 2026 bleibt bei 0,34 €/kWh auf Basis von Destatis 61243-0001, 1. Halbjahr 2025
+- unveränderte Standardtemplates aus v1.3.04 werden aktualisiert; eigene Template-Anpassungen bleiben erhalten
 
 ## Abrechnungsmodell
 

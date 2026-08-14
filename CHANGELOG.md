@@ -2,6 +2,26 @@
 
 Alle relevanten Änderungen an **EVCC to PDF** werden hier versionsweise dokumentiert.
 
+## v1.3.05 – 14.08.2026
+
+### Schlankere PDF-Gruppentabelle
+- In **Weitere Abrechnungsgruppen** die Spalte **Strompreis** entfernt.
+- **Gesamtverbrauch** und **Gesamtkosten** im Summenblock dezent hervorgehoben.
+- Sensorgruppen zeigen im Standard-PDF nur noch Gruppenname, Verbrauch und Kosten.
+- Der gemeinsame Strompreis wird weiterhin einmal zentral im Summenblock ausgewiesen.
+
+### BMF-/Destatis-Grundlage präzisiert
+- Preisermittlung im Standard-PDF als **BMF-Strompreispauschale <Jahr> (Jahrespauschale)** gekennzeichnet.
+- Grundlage ergänzt um den Hinweis, dass das **1. Halbjahr des Vorjahres** die BMF-Basis für das gesamte Kalenderjahr ist.
+- Für 2026 bleibt damit unverändert **0,34 €/kWh** maßgeblich, basierend auf Destatis 61243-0001, 1. Halbjahr 2025 (34,36 ct/kWh, auf volle Cent abgerundet).
+- Dokumentation präzisiert den Anwendungsbereich: Die BMF-Pauschale ist eine Regel für häusliches Laden betrieblicher E-/Hybridfahrzeuge; bei zusätzlichen HA-Gruppen wird derselbe Wert nur als einheitlicher Rechenpreis verwendet.
+- Kein unterjähriger Wechsel auf Werte des 2. Halbjahres.
+
+### Template-Kompatibilität
+- Unverändertes v1.3.04-Standardtemplate wird automatisch auf die neue dreispaltige Gruppentabelle migriert.
+- Individuell bearbeitete Templates bleiben unangetastet.
+- Versionsnummer auf **v1.3.05** angehoben.
+
 ## v1.3.04 – 14.08.2026
 
 ### Übersichtlicher Sensorgruppen-Editor

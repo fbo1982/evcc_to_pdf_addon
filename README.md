@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.3.04-22c55e">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.3.05-22c55e">
   <img alt="Home Assistant" src="https://img.shields.io/badge/Home%20Assistant-App-41BDF5">
   <img alt="EVCC" src="https://img.shields.io/badge/EVCC-compatible-00c853">
   <img alt="Homeoffice" src="https://img.shields.io/badge/Homeoffice-Energieabrechnung-1597ff">
@@ -23,15 +23,15 @@ Beispiel für eine einzige Abrechnung:
 
 Alle Positionen verwenden denselben Abrechnungszeitraum und denselben Strompreis. In der PDF werden die Home-Assistant-Sensoren **nicht einzeln offengelegt**: Dort erscheinen nur die Namen und Summen ihrer Abrechnungsgruppen. Fahrzeuge werden weiterhin einzeln mit Ladevorgängen und Fahrzeug-Zwischensummen aufgelistet.
 
-## Neu in v1.3.04
+## Neu in v1.3.05
 
-- deutlich übersichtlichere Verwaltung der Home-Assistant-Sensorgruppen
-- oben ein Dropdown zur Auswahl der aktuell bearbeiteten Sensorgruppe
-- beim Bearbeiten werden ausschließlich Name und Sensoren der ausgewählten Gruppe angezeigt
-- neue Sensoren werden automatisch der im Dropdown aktiven Gruppe zugeordnet; eine zusätzliche Zielgruppen-Auswahl entfällt
-- neue Sensorgruppen können direkt angelegt, benannt, sortiert und gelöscht werden
-- bestehende Gruppen aus v1.3.03 bleiben ohne Migration vollständig kompatibel
-- Persistenz-, Backup-, Gunicorn- und App-Lifecycle-Verbesserungen aus v1.3.03 bleiben unverändert erhalten
+- PDF-Tabelle **Weitere Abrechnungsgruppen** vereinfacht: Strompreis-Spalte entfernt; angezeigt werden nur Gruppenname, Verbrauch und Kosten
+- Gesamtverbrauch und Gesamtkosten im Summenblock dezent hervorgehoben
+- gemeinsamer Strompreis wird weiterhin einmal zentral im Summenblock ausgewiesen
+- BMF-/Destatis-Grundlage im PDF eindeutiger beschriftet: **Jahrespauschale** und Hinweis, dass das 1. Halbjahr des Vorjahres die BMF-Basis für das gesamte Abrechnungsjahr ist
+- für 2026 bleibt die Pauschale damit bei **0,34 €/kWh auf Basis des 1. Halbjahres 2025**, auch im 2. Halbjahr 2026
+- unveränderte ausgelieferte Standardtemplates aus v1.3.04 werden automatisch auf die schlankere Gruppentabelle aktualisiert; individuell bearbeitete Templates bleiben unangetastet
+- Sensorgruppen-Dropdown und Persistenz-/Backup-Verbesserungen aus v1.3.03/v1.3.04 bleiben unverändert erhalten
 
 ## Abrechnungsmodell seit v1.3.02
 

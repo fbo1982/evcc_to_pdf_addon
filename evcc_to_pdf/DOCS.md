@@ -1,4 +1,4 @@
-# EVCC to PDF – Dokumentation v1.3.04
+# EVCC to PDF – Dokumentation v1.3.05
 
 ## 1. Grundprinzip
 
@@ -71,6 +71,12 @@ Ein Preis-Override wird in €/kWh eingetragen. Ohne Override gilt der Standardp
 
 Bei aktivierter Automatik wird der für das Abrechnungsjahr ermittelte Wert für die komplette Abrechnung verwendet. Das Standard-PDF zeigt zusätzlich Preisermittlung und Grundlage.
 
+Die BMF-Strompreispauschale ist eine **Jahrespauschale**. Für das gesamte Kalenderjahr wird nach der BMF-Regel der von Destatis veröffentlichte Gesamtstrompreis aus dem **1. Halbjahr des Vorjahres** für private Haushalte mit 5.000 bis unter 15.000 kWh Jahresverbrauch verwendet und auf volle Cent abgerundet. Der Wert wird nicht im laufenden Jahr halbjährlich angepasst.
+
+Für das Kalenderjahr **2026** ist daher das **1. Halbjahr 2025** die maßgebliche Datengrundlage. Der Destatis-Wert von 34,36 ct/kWh ergibt nach Abrundung die BMF-Strompreispauschale von **0,34 €/kWh** für das gesamte Kalenderjahr 2026. Für 2027 ist entsprechend das 1. Halbjahr 2026 maßgeblich.
+
+**Hinweis zum Anwendungsbereich:** Die konkrete BMF-Strompreispauschale ist steuerlich für selbst getragene Stromkosten beim häuslichen Laden betrieblicher Elektro-/Hybridelektrofahrzeuge geregelt. Wenn derselbe Wert in EVCC to PDF auf zusätzliche Home-Assistant-Abrechnungsgruppen angewendet wird, dient er dort als einheitlicher Rechenpreis; die BMF-Regel selbst ist keine allgemeine Homeoffice-Strompauschale.
+
 ## 8. PDF-Darstellung
 
 Das Standard-PDF trennt Transparenz und technische Details bewusst:
@@ -99,7 +105,7 @@ Einstellungen werden ab v1.3.03 im Home-Assistant-App-Datenbereich unter `/data/
 
 Beim ersten Start nach einem Update wird vor dem Anlegen von Werkseinstellungen nach älteren Konfigurationen gesucht. v1.3.02 und ältere Installationen mit `/config/settings.json` werden automatisch übernommen. Ist die alte Hauptdatei beschädigt, wird zusätzlich nach einem gültigen Backup gesucht. Alte Dateien werden bei der Migration nicht gelöscht.
 
-Der seit v1.3.03 verwendete `app_config`-Mount bleibt auch in v1.3.04 read-only unter `/config` eingebunden, damit diese Migration zuverlässig durchgeführt werden kann. Neue Laufzeitdaten werden ausschließlich unter `/data/evcc_to_pdf` geschrieben.
+Der seit v1.3.03 verwendete `app_config`-Mount bleibt auch in v1.3.05 read-only unter `/config` eingebunden, damit diese Migration zuverlässig durchgeführt werden kann. Neue Laufzeitdaten werden ausschließlich unter `/data/evcc_to_pdf` geschrieben.
 
 ## 11. Webserver & App-Lifecycle
 
