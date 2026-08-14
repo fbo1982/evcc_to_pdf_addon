@@ -19,8 +19,9 @@
   <ul class="stats">
     <li><strong>EVCC-Fahrzeuge:</strong> {{ settings.cached_assets|length }}</li>
     <li><strong>Abrechnungsgruppen:</strong> {{ settings.groups|length }}</li>
-    <li><strong>EVCC-Gruppen:</strong> {{ settings.groups|selectattr('group_type','equalto','evcc')|list|length }}</li>
-    <li><strong>Home-Assistant-Gruppen:</strong> {{ settings.groups|selectattr('group_type','equalto','homeassistant')|list|length }}</li>
+    <li><strong>Gruppen mit EVCC:</strong> {{ settings.groups|selectattr('include_evcc','equalto',true)|list|length }}</li>
+    {% set ns = namespace(ha_sources=0) %}{% for g in settings.groups %}{% set ns.ha_sources = ns.ha_sources + (g.ha_sources|length) %}{% endfor %}
+    <li><strong>HA-Verbrauchssensoren:</strong> {{ ns.ha_sources }}</li>
     <li><strong>Templates:</strong> {{ settings.templates|length }}</li>
     <li><strong>Scheduler:</strong> {{ "aktiv" if settings.scheduler.enabled else "inaktiv" }}</li>
     <li><strong>Storage:</strong> lokal führend, MQTT Spiegel</li>

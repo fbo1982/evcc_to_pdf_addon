@@ -51,6 +51,7 @@ DESTatis_CSV_URL = "https://www-genesis.destatis.de/genesis-old/downloads/00/tab
 LEGACY_DEFAULT_SOURCE_HASHES = {
     "5492eab4e4ea677da86d5c283c30f9ae1b4e70f3af677161232106487a6f9f01",
     "e845ab04ca5c28a3cc6b9fd568a1b0900bef17922e97605c81f8427390b64f56",
+    "392553cc7cb6beb2b9f469c94c5d68e67ed2dfa68e06cd4e145333d9adf7e449",  # v1.3.0 Standardtemplate
 }
 BMF_RATE_CATALOG = {
     2026: {
@@ -61,7 +62,7 @@ BMF_RATE_CATALOG = {
         "source": "BMF/Destatis",
     },
 }
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.01"
 
 DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
 <html lang="de">
@@ -120,32 +121,7 @@ DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
   <div class="period">{{ billing_mode_label }} – {{ period_label }}</div>
   <div class="group-title">{{ group_name }}</div>
 
-  {% if group_type == "homeassistant" %}
-  <div class="vehicle-section">
-    <table>
-      <thead>
-        <tr>
-          <th style="width:24%">Quelle</th>
-          <th style="width:31%">Home-Assistant-Entität</th>
-          <th style="width:15%">Verbrauch</th>
-          <th style="width:15%">Kosten (€)</th>
-          <th style="width:15%">Summierung</th>
-        </tr>
-      </thead>
-      <tbody>
-      {% for source in ha_sources %}
-        <tr>
-          <td>{{ source.label }}<div class="method">{{ source.calculation_method }}</div></td>
-          <td>{{ source.entity_id }}</td>
-          <td>{{ source.energy_kwh_formatted }} kWh</td>
-          <td>{{ source.cost_formatted }} €</td>
-          <td>{% if source.include_in_total %}enthalten{% else %}<span class="detail-only">nur Detail</span>{% endif %}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
+  {% if vehicle_groups %}
     {% for vehicle_group in vehicle_groups %}
     <div class="vehicle-section">
       <div class="vehicle-title"><strong>Fahrzeug: {{ vehicle_group.vehicle }}</strong></div>
@@ -176,8 +152,36 @@ DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
     {% endfor %}
   {% endif %}
 
+  {% if ha_sources %}
+  <div class="vehicle-section">
+    <div class="vehicle-title"><strong>Home-Assistant-Verbraucher</strong></div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:24%">Verbraucher</th>
+          <th style="width:31%">Home-Assistant-Entität</th>
+          <th style="width:15%">Verbrauch</th>
+          <th style="width:15%">Kosten (€)</th>
+          <th style="width:15%">Summierung</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for source in ha_sources %}
+        <tr>
+          <td>{{ source.label }}<div class="method">{{ source.calculation_method }}</div></td>
+          <td>{{ source.entity_id }}</td>
+          <td>{{ source.energy_kwh_formatted }} kWh</td>
+          <td>{{ source.cost_formatted }} €</td>
+          <td>{% if source.include_in_total %}enthalten{% else %}<span class="detail-only">nur Detail</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
   <div class="summary">
-    <p><strong>{% if group_type == "homeassistant" %}Gesamtverbrauch der Gruppe{% else %}Gesamt geladene kWh{% endif %}:</strong> {{ total_energy_kwh }}</p>
+    <p><strong>Gesamtverbrauch der Gruppe:</strong> {{ total_energy_kwh }}</p>
     <p><strong>Gesamtkosten:</strong> {{ total_cost_eur }}</p>
     <div class="price-info">
       <p><strong>Zugrunde gelegter Strompreis:</strong> {{ electricity_price_eur_kwh }}</p>
@@ -283,24 +287,14 @@ def render_editor_template_html(schema):
 <h3>{heading}</h3>
 <table>
   <thead>
-    {{% if group_type == "homeassistant" %}}
     <tr>
-      <th>Quelle</th>
-      <th>Home-Assistant-Entität</th>
+      <th>Typ</th>
+      <th>Verbraucher</th>
+      <th>Quelle / Zeitraum</th>
       <th>Verbrauch (kWh)</th>
       <th>Kosten (€)</th>
       <th>Summierung</th>
     </tr>
-    {{% else %}}
-    <tr>
-      <th>Datum</th>
-      <th>Startzeit</th>
-      <th>Endzeit</th>
-      <th>Fahrzeug</th>
-      <th>Geladene kWh</th>
-      {cost_header}
-    </tr>
-    {{% endif %}}
   </thead>
   <tbody>
     {{{{ rows_html|safe }}}}
@@ -619,7 +613,8 @@ def normalize_group(group):
         "id": str(uuid.uuid4()),
         "active": True,
         "name": "",
-        "group_type": "evcc",
+        "group_type": "mixed",  # Legacy-/Template-Kompatibilität; Gruppen können alle Verbrauchertypen enthalten.
+        "include_evcc": True,
         "group_icon": "auto",
         "recipient_name": "",
         "recipient_company": "",
@@ -646,18 +641,24 @@ def normalize_group(group):
         "bank_mode": "default",
         "custom_bank": {"recipient": "", "iban": "", "bic": "", "institute": ""},
     }
-    merged = deep_merge(base, group or {})
-    merged["group_type"] = str(merged.get("group_type") or "evcc").strip().lower()
-    if merged["group_type"] not in {"evcc", "homeassistant"}:
-        merged["group_type"] = "evcc"
+    source_group = group or {}
+    legacy_group_type = str(source_group.get("group_type") or "").strip().lower()
+    merged = deep_merge(base, source_group)
+    # Seit v1.3.01 gibt es keinen getrennten EVCC-/HA-Gruppentyp mehr.
+    # Alte EVCC-Gruppen behalten EVCC automatisch aktiv; alte HA-Gruppen nicht.
+    if "include_evcc" not in source_group:
+        merged["include_evcc"] = legacy_group_type != "homeassistant"
+    else:
+        merged["include_evcc"] = bool(source_group.get("include_evcc"))
+    merged["group_type"] = "mixed"
     if not isinstance(merged.get("vehicles"), list):
         merged["vehicles"] = []
     merged["vehicles"] = [str(v) for v in merged["vehicles"] if str(v).strip()]
     if not isinstance(merged.get("ha_sources"), list):
         merged["ha_sources"] = []
     merged["ha_sources"] = [normalize_ha_source(src) for src in merged["ha_sources"] if isinstance(src, dict) and str(src.get("entity_id") or "").strip()]
-    # Die BMF/Destatis-Pauschale ist ausschließlich für die EV-Ladeabrechnung vorgesehen.
-    if merged["group_type"] != "evcc" and merged.get("grid_price_mode") == "bmf":
+    # Preislogik gilt für die komplette Abrechnungsgruppe – unabhängig von der Verbraucherquelle.
+    if str(merged.get("grid_price_mode") or "manual").lower() not in {"manual", "bmf"}:
         merged["grid_price_mode"] = "manual"
     return merged
 
@@ -914,27 +915,61 @@ def _ha_source_kind(entity):
     return "unsupported"
 
 
+def _ha_entity_registry_platforms():
+    """Liefert entity_id -> Integrationsplattform, soweit Home Assistant sie bereitstellt."""
+    try:
+        rows = ha_ws_call({"type": "config/entity_registry/list"}, timeout=20)
+    except Exception as err:
+        LOGGER.info("HA Entity Registry konnte für den Sensorfilter nicht gelesen werden: %s", err)
+        return {}
+    platforms = {}
+    for row in rows if isinstance(rows, list) else []:
+        entity_id = str(row.get("entity_id") or "").strip()
+        if entity_id:
+            platforms[entity_id] = str(row.get("platform") or "").strip().lower()
+    return platforms
+
+
+def _is_evcc_ha_entity(entity_id, label, platform=""):
+    # Primär über die Entity Registry filtern. Der Namens-Fallback greift auch bei älteren HA-Versionen.
+    if str(platform or "").lower() == "evcc":
+        return True
+    entity_l = str(entity_id or "").lower()
+    label_l = str(label or "").lower()
+    return "evcc" in entity_l or label_l.startswith("evcc ") or label_l.startswith("evcc-")
+
+
 def fetch_ha_entities():
     states = ha_rest_get("states", timeout=30)
+    platforms = _ha_entity_registry_platforms()
     candidates = []
     for item in states if isinstance(states, list) else []:
         entity_id = str(item.get("entity_id") or "").strip()
         if not entity_id:
             continue
         attrs = item.get("attributes", {}) if isinstance(item.get("attributes"), dict) else {}
+        label = str(attrs.get("friendly_name") or entity_id)
         kind = _ha_source_kind(item)
-        # Für Abrechnungen zeigen wir Energie-/Leistungssensoren sowie schaltbare/HVAC-Entitäten
-        # als Laufzeit-Fallback. Andere Entitäten würden keine belastbare Verbrauchsermittlung erlauben.
-        if kind == "unsupported":
+        domain = entity_id.split(".", 1)[0] if "." in entity_id else ""
+
+        # Im HA-Auswahldialog werden ausschließlich echte Verbrauchssensoren angeboten:
+        # Energiezähler (Wh/kWh/MWh) oder Leistungssensoren (W/kW/MW).
+        # Climate-/Switch-/Runtime-Entitäten und alle EVCC-eigenen HA-Sensoren bleiben draußen.
+        if domain != "sensor" or kind not in {"energy", "power"}:
             continue
+        platform = platforms.get(entity_id, "")
+        if _is_evcc_ha_entity(entity_id, label, platform):
+            continue
+
         candidates.append({
             "entity_id": entity_id,
-            "label": str(attrs.get("friendly_name") or entity_id),
+            "label": label,
             "kind": kind,
             "unit": str(attrs.get("unit_of_measurement") or ""),
             "device_class": str(attrs.get("device_class") or ""),
             "state_class": str(attrs.get("state_class") or ""),
-            "domain": entity_id.split(".", 1)[0],
+            "domain": domain,
+            "platform": platform,
             "state": str(item.get("state") or ""),
         })
     candidates.sort(key=lambda x: (x["kind"], x["label"].lower(), x["entity_id"].lower()))
@@ -947,7 +982,19 @@ def load_ha_entity_cache():
     if not isinstance(data, dict):
         return {"updated_at": "", "entities": []}
     entities = data.get("entities") if isinstance(data.get("entities"), list) else []
-    return {"updated_at": str(data.get("updated_at") or ""), "entities": entities}
+    # Auch einen noch aus v1.3.0 vorhandenen Cache sofort bereinigen.
+    filtered = []
+    for item in entities:
+        if not isinstance(item, dict):
+            continue
+        entity_id = str(item.get("entity_id") or "")
+        label = str(item.get("label") or entity_id)
+        kind = str(item.get("kind") or "")
+        domain = str(item.get("domain") or (entity_id.split(".", 1)[0] if "." in entity_id else ""))
+        platform = str(item.get("platform") or "")
+        if domain == "sensor" and kind in {"energy", "power"} and not _is_evcc_ha_entity(entity_id, label, platform):
+            filtered.append(item)
+    return {"updated_at": str(data.get("updated_at") or ""), "entities": filtered}
 
 
 def ha_ws_call(command, timeout=35):
@@ -1497,7 +1544,7 @@ def resolve_bmf_rate(billing_year):
 
 def price_info_for_group(settings, group, billing_year):
     mode = str(group.get("grid_price_mode", "manual") or "manual").strip().lower()
-    if mode == "bmf" and str(group.get("group_type", "evcc")) == "evcc":
+    if mode == "bmf":
         info = resolve_bmf_rate(billing_year)
         price = float(info["rate_eur_kwh"])
         source_year = int(info["source_year"])
@@ -1660,10 +1707,94 @@ def generate_ha_summary(settings, group, mode=None, manual_year=None, manual_mon
     }
 
 
+def _blank_component_summary(settings, group, mode=None, manual_year=None, manual_month=None):
+    start, end, _next_period_start, resolved_mode = _resolve_report_period(settings, group, mode, manual_year, manual_month)
+    price_info = price_info_for_group(settings, group, start.year)
+    return {
+        "rows_html": "", "sessions": [], "vehicle_groups": [], "ha_sources": [],
+        "total_energy": 0.0, "total_cost": 0.0,
+        "period_start": start, "period_end": end, "billing_mode": resolved_mode, **price_info,
+    }
+
+
+def generate_combined_summary(settings, group, mode=None, manual_year=None, manual_month=None):
+    """Eine Abrechnungsgruppe kann EVCC-Ladevorgänge und HA-Verbrauchssensoren gemeinsam enthalten."""
+    include_evcc = bool(group.get("include_evcc", True))
+    ha_configured = bool(group.get("ha_sources", []))
+    if not include_evcc and not ha_configured:
+        raise ValueError("In dieser Abrechnungsgruppe sind noch keine Verbraucher konfiguriert.")
+
+    evcc = _blank_component_summary(settings, group, mode, manual_year, manual_month)
+    evcc_notice = ""
+    if include_evcc:
+        try:
+            evcc = generate_evcc_summary(settings, group, mode=mode, manual_year=manual_year, manual_month=manual_month)
+        except ValueError as err:
+            text = str(err)
+            if text in {"Keine Sessions gefunden.", "Keine Ladevorgänge für den gewählten Zeitraum gefunden."}:
+                evcc_notice = text
+            else:
+                raise
+
+    ha = _blank_component_summary(settings, group, mode, manual_year, manual_month)
+    if ha_configured:
+        ha = generate_ha_summary(settings, group, mode=mode, manual_year=manual_year, manual_month=manual_month)
+
+    start = evcc.get("period_start") or ha.get("period_start")
+    end = evcc.get("period_end") or ha.get("period_end")
+    billing_mode = evcc.get("billing_mode") or ha.get("billing_mode")
+    price_info = price_info_for_group(settings, group, start.year)
+    price = float(price_info["price_eur_kwh"])
+
+    total_energy = float(evcc.get("total_energy", 0) or 0) + float(ha.get("total_energy", 0) or 0)
+    total_cost = round(total_energy * price, 2)
+
+    # Einheitliche Tabellenzeilen für den Template-Editor / {{ rows_html }}.
+    combined_rows = []
+    for charge in evcc.get("sessions", []):
+        combined_rows.append(
+            f"<tr><td>Fahrzeug</td><td>{charge.get('vehicle','')}</td>"
+            f"<td>{charge.get('date','')} {charge.get('start_time','')}-{charge.get('end_time','')}</td>"
+            f"<td>{charge.get('energy_kwh_formatted','')}</td><td>{charge.get('cost_eur','')}</td><td>enthalten</td></tr>"
+        )
+    for source in ha.get("ha_sources", []):
+        include = bool(source.get("include_in_total", True))
+        combined_rows.append(
+            f"<tr><td>Home Assistant</td><td>{source.get('label','')}</td><td>{source.get('entity_id','')}</td>"
+            f"<td>{source.get('energy_kwh_formatted','')}</td><td>{source.get('cost_formatted','')} €</td>"
+            f"<td>{'enthalten' if include else 'nur Detail'}</td></tr>"
+        )
+
+    return {
+        "group_type": "mixed",
+        "has_evcc": include_evcc,
+        "has_ha": ha_configured,
+        "evcc_notice": evcc_notice,
+        "rows_html": "".join(combined_rows),
+        "sessions": evcc.get("sessions", []),
+        "vehicle_groups": evcc.get("vehicle_groups", []),
+        "ha_sources": ha.get("ha_sources", []),
+        "evcc_total_energy": float(evcc.get("total_energy", 0) or 0),
+        "evcc_total_cost": float(evcc.get("total_cost", 0) or 0),
+        "ha_total_energy": float(ha.get("total_energy", 0) or 0),
+        "ha_total_cost": float(ha.get("total_cost", 0) or 0),
+        "total_energy": total_energy,
+        "total_cost": total_cost,
+        "total_energy_kwh": f"{format_de_number(total_energy)} kWh",
+        "total_cost_eur": f"{format_de_number(total_cost)} €",
+        "total_energy_formatted": format_de_number(total_energy),
+        "total_cost_formatted": format_de_number(total_cost),
+        "period_start": start,
+        "period_end": end,
+        "period_start_str": start.strftime('%d.%m.%Y'),
+        "period_end_str": end.strftime('%d.%m.%Y'),
+        "billing_mode": billing_mode,
+        **price_info,
+    }
+
+
 def generate_rows_and_summary(settings, group, mode=None, manual_year=None, manual_month=None):
-    if str(group.get("group_type", "evcc")) == "homeassistant":
-        return generate_ha_summary(settings, group, mode=mode, manual_year=manual_year, manual_month=manual_month)
-    return generate_evcc_summary(settings, group, mode=mode, manual_year=manual_year, manual_month=manual_month)
+    return generate_combined_summary(settings, group, mode=mode, manual_year=manual_year, manual_month=manual_month)
 
 
 def render_html(settings, group, mode=None, manual_year=None, manual_month=None):
@@ -1689,6 +1820,12 @@ def render_html(settings, group, mode=None, manual_year=None, manual_month=None)
         "sessions": summary["sessions"],
         "vehicle_groups": summary["vehicle_groups"],
         "ha_sources": summary.get("ha_sources", []),
+        "has_evcc": summary.get("has_evcc", False),
+        "has_ha": summary.get("has_ha", False),
+        "evcc_total_energy": format_de_number(summary.get("evcc_total_energy", 0)),
+        "evcc_total_cost": format_de_number(summary.get("evcc_total_cost", 0)),
+        "ha_total_energy": format_de_number(summary.get("ha_total_energy", 0)),
+        "ha_total_cost": format_de_number(summary.get("ha_total_cost", 0)),
         "group_name": group.get("name", ""),
         "group_type": summary.get("group_type", group.get("group_type", "evcc")),
         "total_energy_kwh": summary["total_energy_kwh"],
@@ -1895,7 +2032,8 @@ def groups_page():
         group["recipient_street"] = request.form.get("recipient_street","").strip()
         group["recipient_zip"] = request.form.get("recipient_zip","").strip()
         group["recipient_city"] = request.form.get("recipient_city","").strip()
-        group["group_type"] = request.form.get("group_type", "evcc").strip().lower()
+        group["group_type"] = "mixed"
+        group["include_evcc"] = parse_bool(request.form.get("include_evcc"))
         group["group_icon"] = request.form.get("group_icon", "auto").strip().lower()
         group["vehicles"] = [v for v in request.form.getlist("vehicles") if v.strip()]
         try:
@@ -1904,7 +2042,7 @@ def groups_page():
             raw_sources = []
         group["ha_sources"] = [normalize_ha_source(src) for src in raw_sources if isinstance(src, dict)]
         group["grid_price_override"] = request.form.get("grid_price_override","").strip()
-        group["grid_price_mode"] = "bmf" if group["group_type"] == "evcc" and parse_bool(request.form.get("grid_price_bmf")) else "manual"
+        group["grid_price_mode"] = "bmf" if parse_bool(request.form.get("grid_price_bmf")) else "manual"
         group["sender_mode"] = request.form.get("sender_mode","default").strip()
         group["custom_sender"] = {
             "name": request.form.get("custom_sender_name","").strip(),

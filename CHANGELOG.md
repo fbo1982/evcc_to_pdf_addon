@@ -2,6 +2,34 @@
 
 Alle relevanten Änderungen an **EVCC to PDF** werden hier versionsweise dokumentiert.
 
+## v1.3.01 – 14.08.2026
+
+### Gemeinsame Verbrauchergruppen
+- Getrennte Gruppentypen **EVCC** und **Home Assistant** aufgehoben.
+- Eine Abrechnungsgruppe kann jetzt gleichzeitig EVCC-Fahrzeuge und Home-Assistant-Verbrauchssensoren enthalten.
+- Gemeinsame Gesamtsumme aus EVCC-Verbrauch und allen einbezogenen HA-Verbrauchern.
+- Fahrzeuggruppierung und Fahrzeug-Zwischensummen bleiben innerhalb derselben Abrechnung erhalten.
+- Home-Assistant-Verbraucher werden zusätzlich als eigene Positionen im selben PDF ausgegeben.
+- Alte v1.3.0-Gruppen werden automatisch migriert; vorhandene Quellen bleiben erhalten.
+
+### Einheitlicher Strompreis
+- Der Gruppenstrompreis gilt jetzt für alle enthaltenen Verbraucher.
+- BMF-/Destatis-Automatik ist nicht mehr an einen EVCC-Gruppentyp gekoppelt und kann für die komplette Abrechnungsgruppe verwendet werden.
+- Manuelle Preiswahl zeigt weiterhin keine zusätzliche Zeile „Preisermittlung“.
+
+### Sensorfilter
+- HA-Auswahlliste beschränkt sich auf echte Energie- und Leistungssensoren.
+- EVCC-eigene Home-Assistant-Sensoren werden über die Entity Registry bzw. einen Namens-Fallback automatisch ausgefiltert.
+- Climate-, Switch- und andere reine Laufzeit-Entitäten werden im Picker nicht mehr angeboten.
+- Neuer UI-Filter: **Alle Verbrauchssensoren / Energie / Leistung** plus Freitextsuche.
+- Bereits konfigurierte v1.3.0-Laufzeitquellen bleiben aus Kompatibilitätsgründen erhalten.
+
+### Templates & Oberfläche
+- Standardtemplate auf kombinierte EVCC-/HA-Ausgabe umgestellt.
+- Unverändertes v1.3.0-Standardtemplate wird automatisch migriert; bearbeitete Templates bleiben unangetastet.
+- Dashboard, Gruppenansicht, README, Dokumentation und Platzhalterliste aktualisiert.
+- Versionsnummer auf **v1.3.01** angehoben.
+
 ## v1.3.0 – 14.08.2026
 
 ### Modulare Abrechnungsgruppen

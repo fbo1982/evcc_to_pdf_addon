@@ -5,7 +5,7 @@
     <div class="card-head">
       <div>
         <h2>Abrechnungsgruppen</h2>
-        <p class="muted">EVCC-Fahrzeuge und Home-Assistant-Verbraucher lassen sich als getrennte, modulare Gruppen abrechnen.</p>
+        <p class="muted">Jede Gruppe kann EVCC-Fahrzeuge und Home-Assistant-Verbrauchssensoren gemeinsam in einer Abrechnung enthalten.</p>
       </div>
       <div class="actions compact-actions">
         <form method="post" action="{{ ingress_path }}/refresh_assets"><button type="submit" class="button secondary">EVCC aktualisieren</button></form>
@@ -19,14 +19,14 @@
           <div>
             <div class="group-title-line">
               <strong>{{ group.name }}</strong>
-              <span class="type-badge {{ 'ha' if group.group_type == 'homeassistant' else 'evcc' }}">{{ 'Home Assistant' if group.group_type == 'homeassistant' else 'EVCC' }}</span>
+              <span class="type-badge evcc">Gemeinsame Abrechnung</span>
             </div>
             <span class="muted">{{ group.recipient_company or group.recipient_name }}{% if group.recipient_email %} · {{ group.recipient_email }}{% endif %}</span><br>
-            {% if group.group_type == 'homeassistant' %}
-              <span class="muted">{{ group.ha_sources|length }} Entität(en) · {{ group.ha_sources|selectattr('include_in_total')|list|length }} in Gruppensumme</span><br>
-            {% else %}
-              <span class="muted">{{ group.vehicles|join(", ") if group.vehicles else "Alle Fahrzeuge" }}</span><br>
-            {% endif %}
+            <span class="muted">
+              {% if group.include_evcc %}EVCC: {{ group.vehicles|join(", ") if group.vehicles else "alle Fahrzeuge" }}{% else %}EVCC: aus{% endif %}
+              · HA: {{ group.ha_sources|length }} Verbrauchssensor(en)
+              · {{ group.ha_sources|selectattr('include_in_total')|list|length }} HA-Sensor(en) in Summe
+            </span><br>
             <span class="muted">{{ "aktiv" if group.active else "inaktiv" }}</span>
           </div>
           <div class="group-actions">
@@ -53,14 +53,9 @@
       <label class="checkbox"><input type="checkbox" name="active" {% if edit_group is none or edit_group.active %}checked{% endif %}><span>Aktiv</span></label>
 
       <div class="form-grid">
-        <label><span>Gruppenname</span><input type="text" name="name" value="{{ edit_group.name if edit_group else '' }}" placeholder="z. B. Homeoffice, Klimaanlage, E-Fahrzeuge" required></label>
-        <label><span>Gruppentyp</span>
-          <select id="group_type" name="group_type" onchange="toggleGroupType()">
-            <option value="evcc" {% if not edit_group or edit_group.group_type == 'evcc' %}selected{% endif %}>EVCC – Fahrzeuge / Ladevorgänge</option>
-            <option value="homeassistant" {% if edit_group and edit_group.group_type == 'homeassistant' %}selected{% endif %}>Home Assistant – Energie / Leistung / Laufzeit</option>
-          </select>
-        </label>
+        <label><span>Gruppenname</span><input type="text" name="name" value="{{ edit_group.name if edit_group else '' }}" placeholder="z. B. Homeoffice-Abrechnung" required></label>
       </div>
+      <p class="muted small">Eine Abrechnungsgruppe kann Fahrzeuge und Home-Assistant-Verbraucher gleichzeitig enthalten. Für alle Verbraucher gilt derselbe Strompreis und derselbe Abrechnungszeitraum.</p>
 
       <div class="subblock">
         <h3>Empfänger</h3>
@@ -79,24 +74,27 @@
         <div id="bmf_price_block">
           <label class="checkbox">
             <input type="checkbox" id="grid_price_bmf" name="grid_price_bmf" onchange="toggleGridPriceMode()" {% if edit_group and edit_group.grid_price_mode == 'bmf' %}checked{% endif %}>
-            <span>BMF-Strompreispauschale automatisch ermitteln</span>
+            <span>BMF-/Destatis-Strompreispauschale automatisch ermitteln</span>
           </label>
-          <p class="muted small">Nur für EVCC-Ladeabrechnungen. Der Wert wird nach Abrechnungsjahr aus der BMF-/Destatis-Regel ermittelt.</p>
+          <p class="muted small">Der für das Abrechnungsjahr ermittelte Preis gilt einheitlich für alle Verbraucher dieser Gruppe – Fahrzeuge und Home-Assistant-Sensoren.</p>
           {% if current_bmf %}
             <p class="price-preview"><strong>Aktuell für {{ current_bmf.billing_year }}:</strong> {{ "%.2f"|format(current_bmf.rate_eur_kwh)|replace(".", ",") }} €/kWh</p>
           {% endif %}
         </div>
         <label id="manual_grid_price_label"><span>Preis-Override €/kWh</span><input id="grid_price_override" type="text" name="grid_price_override" value="{{ edit_group.grid_price_override if edit_group else '' }}" placeholder="z. B. 0,34"></label>
-        <p class="muted small">Bei Home-Assistant-Gruppen wird immer der manuelle Gruppenpreis verwendet. Bleibt das Feld leer, gilt der Standard-Netzstrompreis aus den Einstellungen.</p>
+        <p class="muted small">Bleibt das Feld im manuellen Modus leer, gilt der Standard-Netzstrompreis aus den Einstellungen.</p>
       </div>
 
       <div id="evcc_source_block" class="subblock">
         <div class="card-head">
           <div>
             <h3>EVCC-Fahrzeuge</h3>
-            <p class="muted small">Ohne Auswahl werden alle gefundenen Fahrzeuge berücksichtigt.</p>
+            <p class="muted small">EVCC-Ladevorgänge werden wie weitere Verbraucher in dieselbe Gruppenabrechnung aufgenommen.</p>
           </div>
         </div>
+        <label class="checkbox"><input type="checkbox" name="include_evcc" id="include_evcc" onchange="toggleEvccSources()" {% if edit_group is none or edit_group.include_evcc %}checked{% endif %}><span>EVCC-Ladevorgänge in dieser Gruppe berücksichtigen</span></label>
+        <p class="muted small">Ist EVCC aktiv und kein Fahrzeug ausgewählt, werden alle gefundenen Fahrzeuge berücksichtigt.</p>
+        <div id="evcc_vehicle_choices">
         {% if settings.cached_assets %}
           <div class="checkbox-grid">
             {% for item in settings.cached_assets %}
@@ -106,24 +104,32 @@
         {% else %}
           <p class="muted">Noch keine EVCC-Fahrzeuge geladen. Links oben „EVCC aktualisieren“ verwenden.</p>
         {% endif %}
+        </div>
       </div>
 
       <div id="ha_source_block" class="subblock">
         <div class="card-head">
           <div>
-            <h3>Home-Assistant-Quellen</h3>
-            <p class="muted small">Energiezähler werden direkt ausgewertet, Leistungssensoren über den Zeitraum integriert. Climate-/Switch-Entitäten können optional über Laufzeit × Nennleistung geschätzt werden.</p>
+            <h3>Home-Assistant-Verbrauchssensoren</h3>
+            <p class="muted small">Es werden nur Energie- und Leistungssensoren angeboten. EVCC-Entitäten werden automatisch ausgefiltert.</p>
           </div>
         </div>
 
         {% if ha_entities_updated %}<p class="muted small">Entitäten-Cache: {{ ha_entities_updated }}</p>{% endif %}
         <div class="ha-add-row">
-          <label><span>Entität suchen</span><input id="ha_entity_filter" type="search" placeholder="Shelly, Server, Klima, sensor..." oninput="renderHaCandidateOptions()"></label>
-          <label><span>Entität</span><select id="ha_entity_select"></select></label>
+          <label><span>Sensor suchen</span><input id="ha_entity_filter" type="search" placeholder="Shelly, Server, Klimaanlage..." oninput="renderHaCandidateOptions()"></label>
+          <label><span>Filter</span>
+            <select id="ha_kind_filter" onchange="renderHaCandidateOptions()">
+              <option value="all">Alle Verbrauchssensoren</option>
+              <option value="energy">Energiezähler (Wh/kWh/MWh)</option>
+              <option value="power">Leistungssensoren (W/kW/MW)</option>
+            </select>
+          </label>
+          <label><span>Verbrauchssensor</span><select id="ha_entity_select"></select></label>
           <button type="button" onclick="addHaSource()">Hinzufügen</button>
         </div>
         {% if not ha_entities %}
-          <p class="muted">Noch keine geeigneten Home-Assistant-Entitäten geladen. Links oben „HA-Entitäten aktualisieren“ verwenden. Das Add-on benötigt dafür Home-Assistant-API-Zugriff.</p>
+          <p class="muted">Noch keine geeigneten Verbrauchssensoren geladen. Links oben „HA-Entitäten aktualisieren“ verwenden. Angezeigt werden nur Energie-/Leistungssensoren; EVCC-Sensoren werden ausgeschlossen.</p>
         {% endif %}
 
         <div class="double-count-warning">
@@ -240,9 +246,14 @@ function kindLabel(kind) {
 function renderHaCandidateOptions() {
   const select = document.getElementById('ha_entity_select');
   const filter = (document.getElementById('ha_entity_filter')?.value || '').toLowerCase();
+  const kindFilter = document.getElementById('ha_kind_filter')?.value || 'all';
   if (!select) return;
   const selectedIds = new Set(haSources.map(s => s.entity_id));
-  const rows = haCandidates.filter(item => !selectedIds.has(item.entity_id) && (!filter || `${item.label} ${item.entity_id} ${item.kind}`.toLowerCase().includes(filter)));
+  const rows = haCandidates.filter(item =>
+    !selectedIds.has(item.entity_id) &&
+    (kindFilter === 'all' || item.kind === kindFilter) &&
+    (!filter || `${item.label} ${item.entity_id} ${item.kind} ${item.unit || ''}`.toLowerCase().includes(filter))
+  );
   select.innerHTML = rows.length ? rows.map(item => `<option value="${escapeHtml(item.entity_id)}">${escapeHtml(item.label)} · ${escapeHtml(item.entity_id)} · ${escapeHtml(kindLabel(item.kind))}${item.unit ? ' · '+escapeHtml(item.unit) : ''}</option>`).join('') : '<option value="">Keine passende Entität</option>';
 }
 
@@ -317,33 +328,30 @@ function syncHaSources() {
 }
 
 function toggleGridPriceMode() {
-  const groupType = document.getElementById('group_type')?.value || 'evcc';
   const checkbox = document.getElementById('grid_price_bmf');
   const input = document.getElementById('grid_price_override');
   const label = document.getElementById('manual_grid_price_label');
-  const bmfBlock = document.getElementById('bmf_price_block');
-  if (bmfBlock) bmfBlock.style.display = groupType === 'evcc' ? 'grid' : 'none';
   if (!checkbox || !input || !label) return;
-  if (groupType !== 'evcc') checkbox.checked = false;
-  const automatic = groupType === 'evcc' && checkbox.checked;
+  const automatic = checkbox.checked;
   input.readOnly = automatic;
   label.classList.toggle('field-inactive', automatic);
 }
 
-function toggleGroupType() {
-  const type = document.getElementById('group_type')?.value || 'evcc';
-  const evcc = document.getElementById('evcc_source_block');
-  const ha = document.getElementById('ha_source_block');
-  if (evcc) evcc.style.display = type === 'evcc' ? 'block' : 'none';
-  if (ha) ha.style.display = type === 'homeassistant' ? 'block' : 'none';
-  toggleGridPriceMode();
+function toggleEvccSources() {
+  const enabled = document.getElementById('include_evcc')?.checked !== false;
+  const choices = document.getElementById('evcc_vehicle_choices');
+  if (choices) {
+    choices.classList.toggle('field-inactive', !enabled);
+    choices.querySelectorAll('input').forEach(el => el.disabled = !enabled);
+  }
 }
 
 document.getElementById('group-form')?.addEventListener('submit', syncHaSources);
 document.addEventListener('DOMContentLoaded', () => {
   renderHaSources();
   renderHaCandidateOptions();
-  toggleGroupType();
+  toggleGridPriceMode();
+  toggleEvccSources();
 });
 </script>
 {% endblock %}

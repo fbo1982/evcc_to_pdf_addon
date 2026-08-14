@@ -124,7 +124,7 @@ hr { border:0; border-top:1px solid rgba(122,166,232,.28); margin:18px 0; }
   .brand-tagline { font-size:9px; letter-spacing:.08em; }
 }
 
-/* v1.3.0 – modulare Abrechnungsgruppen */
+/* v1.3.01 – gemeinsame Abrechnungsgruppen */
 .compact-actions { align-items:center; }
 .compact-actions form { margin:0; }
 .group-title-line { display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:5px; }

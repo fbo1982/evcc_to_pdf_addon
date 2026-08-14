@@ -1,19 +1,20 @@
-# EVCC to PDF v1.3.0
+# EVCC to PDF v1.3.01
 
-Modulare Energieabrechnung für **EVCC und Home Assistant**.
+Gemeinsame Energieabrechnung für **EVCC + Home Assistant**.
 
-Mit der App können EV-Ladevorgänge sowie Home-Assistant-Verbraucher wie Shellys, Server, 3D-Drucker und Klimaanlagen gruppiert, über einen Zeitraum ausgewertet, mit einem Strompreis verrechnet und als PDF versendet werden.
+Eine Abrechnungsgruppe kann gleichzeitig EVCC-Fahrzeuge und Home-Assistant-Verbrauchssensoren enthalten. Verbrauch und Kosten werden für denselben Zeitraum berechnet und in einem gemeinsamen PDF zusammengeführt.
 
-## Neu in v1.3.0
+## Neu in v1.3.01
 
-- Home-Assistant-Entitäten als Abrechnungsquellen
-- frei kombinierbare Energiegruppen
-- Energiezähler, Leistungssensoren und Laufzeit-Schätzung
-- Gruppensummen mit Schutz gegen Doppelzählung
-- EVCC-Fahrzeuggruppen bleiben vollständig erhalten
-- BMF-/Destatis-Pauschale bleibt gezielt für EVCC-Gruppen verfügbar
-- neues E-Mobility-/Homeoffice-Branding
+- Fahrzeuge und HA-Verbraucher in **einer Gruppe / einer Abrechnung**
+- ein gemeinsamer Strompreis für alle Verbraucher der Gruppe
+- BMF-/Destatis-Automatik gilt auf Wunsch für die komplette Gruppe
+- Sensorpicker zeigt nur Energie- und Leistungssensoren
+- EVCC-Sensoren aus Home Assistant werden automatisch ausgefiltert
+- Filter nach Energie- oder Leistungssensoren
+- Schutz vor Doppelzählung über **„In Gruppensumme einrechnen“**
+- bestehende v1.3.0-Gruppen werden automatisch migriert
 
-Nach der Installation unter **Gruppen** entweder **EVCC** oder **Home Assistant** als Gruppentyp wählen. Für Home-Assistant-Gruppen zuerst **HA-Entitäten aktualisieren** und anschließend die gewünschten Quellen hinzufügen.
+Unter **Gruppen** EVCC bei Bedarf aktivieren, Fahrzeuge auswählen und anschließend über **HA-Entitäten aktualisieren** zusätzliche Verbrauchssensoren wie Shellys, Server oder Klimaanlagen-Energiesensoren hinzufügen.
 
 Ausführliche Hinweise stehen im Tab **Dokumentation** bzw. in `DOCS.md`.

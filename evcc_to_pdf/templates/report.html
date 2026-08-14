@@ -9,7 +9,7 @@
       <label><span>Gruppe</span>
         <select name="group_id">
           {% for g in settings.groups %}
-          <option value="{{ g.id }}" {% if g.id == selected_group_id %}selected{% endif %}>{{ g.name }} · {{ "Home Assistant" if g.group_type == "homeassistant" else "EVCC" }}</option>
+          <option value="{{ g.id }}" {% if g.id == selected_group_id %}selected{% endif %}>{{ g.name }} · gemeinsame Verbraucherabrechnung</option>
           {% endfor %}
         </select>
       </label>

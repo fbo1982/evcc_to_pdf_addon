@@ -1,39 +1,37 @@
-# Platzhalter für HTML-Templates
+# Template-Platzhalter – v1.3.01
 
-## Gruppe
+## Gruppe und Zeitraum
+
 - `{{ group_name }}` – Name der Abrechnungsgruppe
-- `{{ group_type }}` – `evcc` oder `homeassistant`
-
-## Empfänger
-- `{{ recipient.name }}`
-- `{{ recipient.company }}`
-- `{{ recipient.street }}`
-- `{{ recipient.zip }}`
-- `{{ recipient.city }}`
-- `{{ recipient.email }}`
-
-## Absender
-- `{{ sender.name }}`
-- `{{ sender.street }}`
-- `{{ sender.zip }}`
-- `{{ sender.city }}`
-- `{{ sender.email }}`
-
-## Zeit / Abrechnung
-- `{{ invoice_date }}`
+- `{{ group_type }}` – ab v1.3.01 normalerweise `mixed`
+- `{{ has_evcc }}` – EVCC ist für die Gruppe aktiviert
+- `{{ has_ha }}` – mindestens eine HA-Quelle ist konfiguriert
+- `{{ period_label }}` – lesbarer Abrechnungszeitraum
+- `{{ period_start }}` / `{{ period_end }}`
 - `{{ billing_mode_label }}`
-- `{{ period_label }}`
-- `{{ period_start }}`
-- `{{ period_end }}`
 
-## EVCC
-- `{{ sessions }}` – Liste aller Ladevorgänge
-- `{{ vehicle_groups }}` – nach Fahrzeug gruppierte Ladevorgänge inklusive Zwischensummen
+## Fahrzeuge / EVCC
+
+- `{{ sessions }}` – alle EVCC-Ladevorgänge im Zeitraum
+- `{{ vehicle_groups }}` – Ladevorgänge nach Fahrzeug gruppiert
+- `{{ evcc_total_energy }}` – EVCC-Teilsumme kWh, formatiert
+- `{{ evcc_total_cost }}` – EVCC-Teilsumme Kosten, formatiert
+
+Ein Element aus `vehicle_groups` enthält u. a.:
+
+- `vehicle`
+- `sessions`
+- `total_energy_kwh`
+- `total_cost_eur`
 
 ## Home Assistant
-- `{{ ha_sources }}` – Liste der ausgewerteten Quellen
 
-Jeder Eintrag in `ha_sources` enthält unter anderem:
+- `{{ ha_sources }}` – ausgewertete HA-Verbrauchssensoren
+- `{{ ha_total_energy }}` – einbezogene HA-Teilsumme kWh, formatiert
+- `{{ ha_total_cost }}` – einbezogene HA-Teilsumme Kosten, formatiert
+
+Ein Element aus `ha_sources` enthält u. a.:
+
 - `entity_id`
 - `label`
 - `energy_kwh`
@@ -42,33 +40,27 @@ Jeder Eintrag in `ha_sources` enthält unter anderem:
 - `cost_formatted`
 - `include_in_total`
 - `calculation_method`
-- `mode`
-- `unit`
 
-## Gemeinsame Tabellen
-- `{{ rows_html|safe }}` – gerenderte Tabellenzeilen des gewählten Gruppentyps
+## Gemeinsame Summen
 
-## Summen
-- `{{ total_energy_kwh }}` – formatiert inklusive `kWh`
-- `{{ total_cost_eur }}` – formatiert inklusive `€`
-- `{{ total_energy }}` – nur Zahlenformat
-- `{{ total_cost }}` – nur Zahlenformat
+- `{{ total_energy_kwh }}` – Gesamtverbrauch EVCC + einbezogene HA-Quellen
+- `{{ total_cost_eur }}` – Gesamtkosten
+- `{{ total_energy }}` – formatierter Zahlenwert ohne Einheit
+- `{{ total_cost }}` – formatierter Zahlenwert ohne Einheit
+- `{{ rows_html|safe }}` – kombinierte Tabellenzeilen für EVCC und HA
 
 ## Strompreis
-- `{{ electricity_price }}` – Preis als Zahl im deutschen Format
-- `{{ electricity_price_eur_kwh }}` – Preis inklusive `€/kWh`
+
+- `{{ electricity_price }}` – formatierter Zahlenwert
+- `{{ electricity_price_eur_kwh }}` – inklusive Einheit
 - `{{ price_mode }}` – `manual` oder `bmf`
-- `{{ price_method_label }}` – nur bei Automatik, z. B. `BMF-Strompreispauschale 2026`
-- `{{ price_source_label }}` – nur bei Automatik
-- `{{ price_source_year }}` – Bezugsjahr der Destatis-Daten
+- `{{ price_method_label }}` – bei manuell leer
+- `{{ price_source_label }}` – bei manuell leer
+- `{{ price_source_year }}`
 
-Bei manueller Preiswahl sind `price_method_label` und `price_source_label` leer. Dadurch entfällt die Zeile „Preisermittlung“ vollständig.
+## Absender / Empfänger / Bank
 
-## Bank
-- `{{ bank.recipient }}`
-- `{{ bank.iban }}`
-- `{{ bank.bic }}`
-- `{{ bank.institute }}`
-
-## Mailtext
-- `{{ email_body }}`
+- `{{ sender }}` / `{{ recipient }}` / `{{ bank }}`
+- `{{ sender_name }}`, `{{ sender_street }}`, `{{ sender_zip }}`, `{{ sender_city }}`, `{{ sender_email }}`
+- `{{ recipient_name }}`, `{{ recipient_company }}`, `{{ recipient_street }}`, `{{ recipient_zip }}`, `{{ recipient_city }}`, `{{ recipient_email }}`
+- `{{ bank_recipient }}`, `{{ bank_iban }}`, `{{ bank_bic }}`, `{{ bank_institute }}`

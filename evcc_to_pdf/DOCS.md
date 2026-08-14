@@ -1,146 +1,96 @@
-# EVCC to PDF – Dokumentation v1.3.0
+# EVCC to PDF – Dokumentation v1.3.01
 
-## 1. Konzept
+## 1. Grundprinzip
 
-Eine **Abrechnungsgruppe** ist eine eigenständige Einheit mit Empfänger, Strompreis, Zeitraum, Template und Datenquellen. Es gibt zwei Gruppentypen:
+Seit v1.3.01 gibt es keine getrennten EVCC- und Home-Assistant-Gruppentypen mehr. Eine **Abrechnungsgruppe** enthält beliebige Verbraucher aus beiden Quellen und erzeugt daraus eine gemeinsame Abrechnung.
 
-1. **EVCC** – Ladevorgänge und Fahrzeuge
-2. **Home Assistant** – Energie-, Leistungs- oder Laufzeit-Entitäten
+Zu einer Gruppe gehören unter anderem:
 
-Damit lassen sich beispielsweise E-Fahrzeuge, Homeoffice-Stromkreise, Server und Klimaanlagen unabhängig voneinander abrechnen.
+- Empfänger
+- gemeinsamer Abrechnungszeitraum
+- gemeinsamer Strompreis
+- optional EVCC-Ladevorgänge / Fahrzeuge
+- beliebig viele Home-Assistant-Verbrauchssensoren
+- Template und E-Mail-Einstellungen
 
-## 2. Einstellungen
+## 2. EVCC-Verbraucher
 
-### EVCC
+Mit **„EVCC-Ladevorgänge in dieser Gruppe berücksichtigen“** wird EVCC für die Gruppe aktiviert. Danach können einzelne Fahrzeuge gewählt werden. Ohne Fahrzeugauswahl werden alle gefundenen Fahrzeuge berücksichtigt.
 
-Für EVCC-Gruppen die Basis-URL und bei Bedarf das EVCC-Passwort eintragen.
+Im Report bleiben die Ladevorgänge nach Fahrzeug gegliedert und erhalten eine Zwischensumme je Fahrzeug.
 
-### Standard-Strompreis
+## 3. Home-Assistant-Verbrauchssensoren
 
-Der Standard-Strompreis in €/kWh wird verwendet, wenn eine Gruppe keinen eigenen Preis-Override besitzt.
+Nach **HA-Entitäten aktualisieren** zeigt der Picker ausschließlich geeignete Verbrauchssensoren:
 
-### SMTP
+- Energie-Sensoren: Wh / kWh / MWh
+- Leistungs-Sensoren: W / kW / MW
 
-Für den automatischen Versand SMTP-Host, Port, Benutzer und Passwort hinterlegen. TLS kann aktiviert werden.
+EVCC-eigene Home-Assistant-Entitäten werden automatisch aus der Auswahl entfernt. Dadurch werden EVCC-Ladevorgänge nicht versehentlich ein zweites Mal als HA-Verbrauch erfasst.
 
-### Scheduler
+Zusätzlich stehen im Picker folgende Filter zur Verfügung:
 
-Der Scheduler erzeugt und versendet aktive Gruppen automatisch nach deren Abrechnungsmodus und Versandtag.
+- Alle Verbrauchssensoren
+- Energiezähler
+- Leistungssensoren
+- Freitextsuche nach Name oder Entity-ID
 
-## 3. EVCC-Gruppen
+## 4. Berechnung von HA-Verbrauch
 
-Beim Gruppentyp **EVCC** werden die EVCC-Fahrzeuge angezeigt. Nach **EVCC aktualisieren** können einzelne Fahrzeuge ausgewählt werden. Ohne Auswahl werden alle passenden Ladevorgänge verwendet.
+### Energiezähler
 
-Die Standardausgabe untergliedert den Bericht nach Fahrzeugen und erzeugt pro Fahrzeug eine Zwischensumme.
+Für Energiezähler wird die Differenz bzw. Summe im gewählten Zeitraum ermittelt. Home-Assistant-Langzeitstatistiken werden bevorzugt verwendet; die Recorder-History dient als Fallback.
 
-### BMF-/Destatis-Preis
+### Leistungssensoren
 
-Nur EVCC-Gruppen können die automatische BMF-/Destatis-Strompreispauschale verwenden. Bei manueller Preiswahl wird im Bericht ausschließlich der verwendete Strompreis ausgegeben; „Preisermittlung“ und „Grundlage“ bleiben leer.
+Leistungswerte werden über die Zeit integriert und in kWh umgerechnet.
 
-## 4. Home-Assistant-Gruppen
+Bereits in v1.3.0 konfigurierte Laufzeit-Quellen bleiben aus Kompatibilitätsgründen erhalten, werden aber nicht mehr im neuen Sensorpicker angeboten.
 
-### Entitäten laden
+## 5. Doppelzählung
 
-Unter **Gruppen → HA-Entitäten aktualisieren** liest die App geeignete Entitäten direkt aus Home Assistant. Dafür nutzt das App den internen Core-API-Zugriff und `SUPERVISOR_TOKEN`; ein eigener Long-Lived Access Token ist nicht erforderlich.
+Jede HA-Quelle besitzt **„In Gruppensumme einrechnen“**.
 
-Angeboten werden:
+Beispiel: Ein Shelly für Phase 1 enthält bereits den Stromverbrauch des 3D-Druckers. Ein zusätzlicher Shelly Plug am Drucker kann trotzdem als Detailposition erscheinen. Wird dessen Summierungsoption deaktiviert, bleibt die Gesamtsumme korrekt.
 
-- Energie-Sensoren in `Wh`, `kWh`, `MWh`
-- Leistungssensoren in `W`, `kW`, `MW`
-- `climate.*`, `switch.*`, `binary_sensor.*`, `input_boolean.*` für die optionale Laufzeit-Schätzung
+EVCC-Ladevorgänge werden immer in die Gruppensumme einbezogen, sofern EVCC für die Gruppe aktiviert ist.
 
-### Quelle hinzufügen
+## 6. Gemeinsamer Strompreis
 
-Eine Quelle enthält:
+Der Strompreis wird einmal pro Gruppe festgelegt und auf EVCC- und HA-Verbrauch gleichermaßen angewendet.
 
-- Anzeigename
-- Entity-ID
-- Auswertungsmodus
-- optionale Nennleistung
-- Option **In Gruppensumme einrechnen**
+### Manuell
 
-### Automatische Auswertung
+Der Gruppen-Override wird in €/kWh eingetragen. Ist er leer, wird der Standard-Strompreis aus den Einstellungen verwendet. Im PDF erscheint nur der zugrunde gelegte Strompreis.
 
-**Auto** erkennt den Typ anhand der aktuellen Home-Assistant-Entität.
+### BMF-/Destatis-Automatik
 
-#### Energiezähler
+Ist die Automatik aktiviert, wird der für das Abrechnungsjahr ermittelte Wert für die komplette Gruppe verwendet. Im PDF erscheinen zusätzlich Preisermittlung und Datengrundlage.
 
-Energiezähler werden über die Differenz des Abrechnungszeitraums ausgewertet. Langzeitstatistiken werden bevorzugt. Falls keine Statistik verfügbar ist, versucht die App die Recorder-History zu verwenden.
+## 7. Gemeinsame PDF-Ausgabe
 
-#### Leistungssensor
+Das Standardtemplate zeigt nacheinander:
 
-Leistungswerte werden über den Zeitraum integriert und in kWh umgerechnet. Auch hier werden Home-Assistant-Statistiken bevorzugt.
+1. Fahrzeugbereiche mit Ladevorgängen und Fahrzeug-Zwischensummen
+2. Home-Assistant-Verbraucher mit Entity-ID, Verbrauch, Kosten und Berechnungsmethode
+3. gemeinsame Gesamtsumme
+4. gemeinsamen Strompreis
+5. bei Automatik Preisermittlung und Grundlage
 
-#### Laufzeit × Nennleistung
+Damit kann beispielsweise eine komplette Homeoffice-Abrechnung aus Dienstwagen, drei Phasen, Server, 3D-Drucker und Klimaanlage in einem Dokument erzeugt werden.
 
-Für Entitäten ohne gemessene Energie oder Leistung kann eine Nennleistung in Watt hinterlegt werden. Die aktive Laufzeit wird mit dieser Leistung multipliziert. Diese Methode ist eine **Schätzung** und wird im PDF entsprechend gekennzeichnet.
+## 8. Migration von v1.3.0
 
-Für Klimaanlagen ist ein echter Energie- oder Leistungssensor vorzuziehen.
+Die Migration erfolgt automatisch:
 
-## 5. Doppelzählungen
+- alte EVCC-Gruppen erhalten `include_evcc = true`
+- alte Home-Assistant-Gruppen erhalten `include_evcc = false`
+- alle Gruppen werden intern auf den gemeinsamen Typ `mixed` umgestellt
+- vorhandene Fahrzeuge und HA-Quellen bleiben erhalten
+- BMF-Preismodus wird nicht mehr aufgrund des alten Gruppentyps deaktiviert
+- ein unverändertes v1.3.0-Standardtemplate wird automatisch auf das neue kombinierte Layout migriert
+- individuell bearbeitete Templates werden nicht überschrieben
 
-Beispiel:
+## 9. Persistenz
 
-- `sensor.shelly_phase_1_energy` misst den gesamten Stromkreis.
-- `sensor.3d_drucker_energy` ist Bestandteil dieses Stromkreises.
-
-Wenn beide Quellen addiert werden, wird der Drucker doppelt gezählt. Deshalb kann der Drucker in der Gruppe sichtbar bleiben, während **In Gruppensumme einrechnen** deaktiviert wird.
-
-Die Detailposition erhält weiterhin ihren eigenen Verbrauch und rechnerischen Kostenanteil, beeinflusst aber die Gruppensumme nicht.
-
-## 6. Strompreis für Home-Assistant-Gruppen
-
-Home-Assistant-Gruppen verwenden einen manuellen Gruppenpreis. Bleibt der Override leer, wird der Standard-Strompreis aus den Einstellungen verwendet.
-
-Die BMF-/Destatis-Automatik ist bewusst EVCC-Gruppen vorbehalten.
-
-## 7. Berichte
-
-Unter **Manuell** Gruppe, Jahr und Monat auswählen. Möglich sind:
-
-- HTML-Vorschau
-- PDF erzeugen
-- PDF erzeugen und per E-Mail senden
-
-### Home-Assistant-PDF
-
-Je Quelle werden ausgegeben:
-
-- Name
-- Entity-ID
-- Verbrauch
-- Kosten
-- Berechnungsmethode
-- Summierungsstatus
-
-Danach folgen Gesamtverbrauch, Gesamtkosten und Strompreis der Gruppe.
-
-## 8. Langzeitstatistiken und History
-
-Für Abrechnungen ist eine kontinuierliche Datenbasis wichtig. Die App verwendet für geeignete Sensoren bevorzugt Home Assistants Recorder-Langzeitstatistiken. Dadurch ist die Auswertung nicht ausschließlich von der normalen History-Aufbewahrungsdauer abhängig.
-
-Wenn eine Entität keine geeigneten Statistiken liefert, wird auf die History zurückgegriffen. Fehlt für eine Quelle die erforderliche Datenbasis und die Quelle ist Teil der Gruppensumme, wird die Abrechnung mit einer verständlichen Fehlermeldung abgebrochen, statt stillschweigend einen falschen Wert zu verwenden.
-
-## 9. Templates
-
-Das Standardtemplate unterstützt EVCC- und Home-Assistant-Gruppen. Eigene Templates können weiterhin verwendet werden.
-
-Zusätzliche Variablen in v1.3.0:
-
-- `group_name`
-- `group_type`
-- `ha_sources`
-
-Details stehen in `PLACEHOLDERS.md`.
-
-## 10. Speicherung und Backups
-
-Die Konfiguration wird persistent unter dem von Home Assistant bereitgestellten App-Konfigurationsbereich gespeichert. Schreibvorgänge sind atomar, vor Änderungen werden Backups erstellt und beschädigte Konfigurationen werden nicht kommentarlos durch Werkseinstellungen ersetzt.
-
-## 11. PDF-Ablage
-
-PDFs werden unter `/share/evcc-pdfs` gespeichert.
-
-## 12. Hinweis
-
-EVCC to PDF ist ein technisches Abrechnungswerkzeug und keine Steuer-, Rechts- oder Lohnabrechnungsberatung. Bei Laufzeit × Nennleistung handelt es sich ausdrücklich um eine Verbrauchsschätzung.
+Einstellungen werden persistent unter `/config` gespeichert. Schreibvorgänge sind atomar und erzeugen Backups. Ein beschädigtes Settings-File führt nicht unmittelbar zu Werkseinstellungen, sondern löst zunächst die Wiederherstellung aus einem gültigen Backup aus.
