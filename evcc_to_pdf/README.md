@@ -1,16 +1,17 @@
-# EVCC to PDF v1.3.03
+# EVCC to PDF v1.3.04
 
 Modulare Energieabrechnung für **EVCC + Home Assistant**.
 
 Eine Abrechnung kann beliebig viele frei benannte Home-Assistant-Sensorgruppen und zusätzlich einzelne EVCC-Fahrzeuge enthalten. Für alles gilt derselbe Zeitraum und Strompreis.
 
-## Neu in v1.3.03
+## Neu in v1.3.04
 
-- persistente Konfiguration unter `/data/evcc_to_pdf`
-- automatische Übernahme vorhandener v1.3.02-Konfiguration und gültiger Backups
-- Gunicorn als produktiver Webserver
-- aktueller Home-Assistant-App-Lifecycle (`startup: application`)
-- bessere Fehlerprotokollierung bei HA-/EVCC-Aktualisierungen
+- Sensorgruppen werden über ein zentrales Dropdown ausgewählt
+- es wird immer nur die aktuell gewählte Sensorgruppe mit ihren Sensoren angezeigt
+- Gruppenname kann direkt in der ausgewählten Gruppe bearbeitet werden
+- neue Sensoren landen automatisch in der aktiven Gruppe
+- Sortieren und Löschen beziehen sich ebenfalls nur auf die ausgewählte Gruppe
+- bestehende v1.3.03-Konfigurationen bleiben unverändert kompatibel
 
 ## Abrechnungsmodell
 
@@ -24,6 +25,6 @@ Eine Abrechnung kann beliebig viele frei benannte Home-Assistant-Sensorgruppen u
 - ein gemeinsamer manueller oder automatischer Strompreis für die komplette Abrechnung
 - Migration bestehender v1.3.01-Konfigurationen
 
-Unter **Gruppen** eine Abrechnung öffnen, Fahrzeuge auswählen und anschließend die gewünschten Sensor-Abrechnungsgruppen anlegen. Über **HA-Entitäten aktualisieren** werden geeignete Verbrauchssensoren geladen.
+Unter **Gruppen** eine Abrechnung öffnen, Fahrzeuge auswählen und anschließend über **+ Neue Sensorgruppe** die gewünschten Gruppen anlegen. Die zu bearbeitende Gruppe wird im Dropdown ausgewählt; darunter sind nur deren Sensoren sichtbar. Über **HA-Entitäten aktualisieren** werden geeignete Verbrauchssensoren geladen.
 
 Ausführliche Hinweise stehen in `DOCS.md`.

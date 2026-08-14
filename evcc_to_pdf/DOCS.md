@@ -1,4 +1,4 @@
-# EVCC to PDF – Dokumentation v1.3.03
+# EVCC to PDF – Dokumentation v1.3.04
 
 ## 1. Grundprinzip
 
@@ -20,9 +20,11 @@ Ist EVCC aktiviert und kein einzelnes Fahrzeug gewählt, werden alle gefundenen 
 
 ## 3. Sensor-Abrechnungsgruppen
 
-Über **+ Abrechnungsgruppe** können beliebig viele Gruppen angelegt und frei benannt werden. Die Pfeile ändern die Reihenfolge; diese Reihenfolge wird auch für die Standard-PDF-Ausgabe verwendet.
+Über **+ Neue Sensorgruppe** können beliebig viele Gruppen angelegt und frei benannt werden. Oben im Bereich **Sensorgruppen** wählt ein Dropdown die aktuell zu bearbeitende Gruppe aus. Es wird immer nur diese eine Gruppe mit ihrem Namen und ihren zugeordneten Sensoren angezeigt; die übrigen Gruppen bleiben ausgeblendet, bis sie im Dropdown gewählt werden.
 
-Der Sensorpicker arbeitet mit einer Zielgruppe. Nach Auswahl der Zielgruppe kann der gewünschte Sensor gesucht, gefiltert und hinzugefügt werden.
+Die Pfeile neben dem Dropdown ändern die Reihenfolge der aktuell ausgewählten Gruppe. Diese Reihenfolge wird auch für die Standard-PDF-Ausgabe verwendet. **Gruppe löschen** betrifft ausschließlich die aktive Gruppe.
+
+Der Sensorpicker arbeitet automatisch mit der im Dropdown ausgewählten Gruppe. Eine zusätzliche Zielgruppen-Auswahl ist nicht mehr nötig. Nach Auswahl der Gruppe kann der gewünschte Sensor gesucht, gefiltert und hinzugefügt werden.
 
 Ein Sensor wird über die Oberfläche nur einmal zugeordnet, damit derselbe Messwert nicht versehentlich in mehreren Gruppen doppelt summiert wird.
 
@@ -97,7 +99,7 @@ Einstellungen werden ab v1.3.03 im Home-Assistant-App-Datenbereich unter `/data/
 
 Beim ersten Start nach einem Update wird vor dem Anlegen von Werkseinstellungen nach älteren Konfigurationen gesucht. v1.3.02 und ältere Installationen mit `/config/settings.json` werden automatisch übernommen. Ist die alte Hauptdatei beschädigt, wird zusätzlich nach einem gültigen Backup gesucht. Alte Dateien werden bei der Migration nicht gelöscht.
 
-Der `app_config`-Mount bleibt in v1.3.03 read-only unter `/config` eingebunden, damit diese Migration zuverlässig durchgeführt werden kann. Neue Laufzeitdaten werden ausschließlich unter `/data/evcc_to_pdf` geschrieben.
+Der seit v1.3.03 verwendete `app_config`-Mount bleibt auch in v1.3.04 read-only unter `/config` eingebunden, damit diese Migration zuverlässig durchgeführt werden kann. Neue Laufzeitdaten werden ausschließlich unter `/data/evcc_to_pdf` geschrieben.
 
 ## 11. Webserver & App-Lifecycle
 

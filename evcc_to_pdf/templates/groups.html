@@ -29,7 +29,7 @@
             <span class="muted">{{ group.recipient_company or group.recipient_name }}{% if group.recipient_email %} · {{ group.recipient_email }}{% endif %}</span><br>
             <span class="muted">
               {% if group.include_evcc %}Fahrzeuge: {{ group.vehicles|join(", ") if group.vehicles else "alle EVCC-Fahrzeuge" }}{% else %}Fahrzeuge: aus{% endif %}
-              · {{ counts.sensor_groups }} Abrechnungsgruppe(n)
+              · {{ counts.sensor_groups }} Sensorgruppe(n)
               · {{ counts.sensors }} Sensor(en)
             </span><br>
             <span class="muted">{{ "aktiv" if group.active else "inaktiv" }}</span>
@@ -115,34 +115,49 @@
       <div id="ha_source_block" class="subblock">
         <div class="card-head">
           <div>
-            <h3>Abrechnungsgruppen für Home-Assistant-Sensoren</h3>
-            <p class="muted small">Beliebig viele Gruppen anlegen und jeder Gruppe beliebig viele Verbrauchssensoren zuweisen. In der PDF wird nur der Gruppenname mit Verbrauch und Kosten ausgegeben – nicht die einzelnen Sensoren.</p>
+            <h3>Sensorgruppen</h3>
+            <p class="muted small">Lege beliebig viele Gruppen an, benenne sie frei und ordne jeder Gruppe die gewünschten Home-Assistant-Verbrauchssensoren zu. Beim Bearbeiten wird immer nur die aktuell ausgewählte Gruppe angezeigt.</p>
           </div>
-          <button type="button" class="button secondary" onclick="addBillingGroup()">+ Abrechnungsgruppe</button>
+          <button type="button" class="button secondary" onclick="addBillingGroup()">+ Neue Sensorgruppe</button>
         </div>
 
         {% if ha_entities_updated %}<p class="muted small">Entitäten-Cache: {{ ha_entities_updated }}</p>{% endif %}
-        <div class="billing-group-picker">
-          <label><span>Zielgruppe</span><select id="billing_group_target"></select></label>
-          <label><span>Sensor suchen</span><input id="ha_entity_filter" type="search" placeholder="Shelly, Server, Klimaanlage..." oninput="renderHaCandidateOptions()"></label>
-          <label><span>Filter</span>
-            <select id="ha_kind_filter" onchange="renderHaCandidateOptions()">
-              <option value="all">Alle Verbrauchssensoren</option>
-              <option value="energy">Energiezähler (Wh/kWh/MWh)</option>
-              <option value="power">Leistungssensoren (W/kW/MW)</option>
-            </select>
+
+        <div class="billing-group-toolbar">
+          <label class="billing-group-selector"><span>Sensorgruppe auswählen</span>
+            <select id="active_billing_group" onchange="selectBillingGroup(this.value)"></select>
           </label>
-          <label><span>Verbrauchssensor</span><select id="ha_entity_select"></select></label>
-          <button type="button" onclick="addHaSource()">Sensor hinzufügen</button>
+          <div class="billing-group-toolbar-actions">
+            <button type="button" id="billing_group_up" class="button secondary small-button" onclick="moveCurrentBillingGroup(-1)" title="Gruppe nach oben">↑</button>
+            <button type="button" id="billing_group_down" class="button secondary small-button" onclick="moveCurrentBillingGroup(1)" title="Gruppe nach unten">↓</button>
+            <button type="button" id="billing_group_delete" class="danger small-button" onclick="removeCurrentBillingGroup()">Gruppe löschen</button>
+          </div>
         </div>
-        {% if not ha_entities %}
-          <p class="muted">Noch keine geeigneten Verbrauchssensoren geladen. Links oben „HA-Entitäten aktualisieren“ verwenden. Angezeigt werden nur Energie-/Leistungssensoren; EVCC-Sensoren werden ausgeschlossen.</p>
-        {% endif %}
+
+        <div id="active_billing_group_editor"></div>
+
+        <div class="sensor-picker-panel">
+          <h4>Sensor zur ausgewählten Gruppe hinzufügen</h4>
+          <div class="billing-group-picker">
+            <label><span>Sensor suchen</span><input id="ha_entity_filter" type="search" placeholder="Shelly, Server, Klimaanlage..." oninput="renderHaCandidateOptions()"></label>
+            <label><span>Filter</span>
+              <select id="ha_kind_filter" onchange="renderHaCandidateOptions()">
+                <option value="all">Alle Verbrauchssensoren</option>
+                <option value="energy">Energiezähler (Wh/kWh/MWh)</option>
+                <option value="power">Leistungssensoren (W/kW/MW)</option>
+              </select>
+            </label>
+            <label><span>Verbrauchssensor</span><select id="ha_entity_select"></select></label>
+            <button type="button" id="add_ha_sensor_button" onclick="addHaSource()">Sensor hinzufügen</button>
+          </div>
+          {% if not ha_entities %}
+            <p class="muted">Noch keine geeigneten Verbrauchssensoren geladen. Links oben „HA-Entitäten aktualisieren“ verwenden. Angezeigt werden nur Energie-/Leistungssensoren; EVCC-Sensoren werden ausgeschlossen.</p>
+          {% endif %}
+        </div>
 
         <div class="double-count-warning">
-          <strong>Doppelzählung vermeiden:</strong> Jeder Sensor kann in der Oberfläche nur einer Abrechnungsgruppe zugewiesen werden. Wenn ein Unterzähler bereits in einem übergeordneten Zähler enthalten ist, kann er zusätzlich aus der Gruppensumme ausgeschlossen werden.
+          <strong>Doppelzählung vermeiden:</strong> Jeder Sensor kann in der Oberfläche nur einer Sensorgruppe zugewiesen werden. Wenn ein Unterzähler bereits in einem übergeordneten Zähler enthalten ist, kann er zusätzlich aus der Gruppensumme ausgeschlossen werden.
         </div>
-        <div id="billing_groups_list" class="billing-groups-list"></div>
       </div>
 
       <label><span>Absender</span>
@@ -241,6 +256,7 @@
 <script>
 const haCandidates = {{ ha_entities|tojson }};
 let billingGroups = {{ (edit_group.billing_groups if edit_group else [])|tojson }};
+let selectedBillingGroupId = billingGroups.length ? billingGroups[0].id : '';
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
@@ -259,79 +275,136 @@ function allAssignedIds() {
   return new Set(billingGroups.flatMap(group => (group.ha_sources || []).map(src => src.entity_id)));
 }
 
+function currentBillingGroupIndex() {
+  return billingGroups.findIndex(group => group.id === selectedBillingGroupId);
+}
+
+function currentBillingGroup() {
+  const index = currentBillingGroupIndex();
+  return index >= 0 ? billingGroups[index] : null;
+}
+
 function addBillingGroup() {
   const number = billingGroups.length + 1;
   const item = {id: uid(), name: `Gruppe ${number}`, ha_sources: []};
   billingGroups.push(item);
-  renderBillingGroups();
-  renderBillingGroupTargets(item.id);
+  selectedBillingGroupId = item.id;
+  renderBillingGroupSelector();
+  renderActiveBillingGroup();
+  renderHaCandidateOptions();
+  syncBillingGroups();
+  window.setTimeout(() => document.getElementById('active_billing_group_name')?.select(), 0);
+}
+
+function selectBillingGroup(groupId) {
+  if (!billingGroups.some(group => group.id === groupId)) return;
+  selectedBillingGroupId = groupId;
+  renderBillingGroupSelector();
+  renderActiveBillingGroup();
   renderHaCandidateOptions();
 }
 
-function updateBillingGroup(index, field, value) {
-  if (!billingGroups[index]) return;
-  billingGroups[index][field] = value;
+function updateCurrentBillingGroupName(value) {
+  const group = currentBillingGroup();
+  if (!group) return;
+  group.name = value;
   syncBillingGroups();
-  if (field === 'name') renderBillingGroupTargets();
+  renderBillingGroupSelector();
 }
 
-function removeBillingGroup(index) {
+function removeCurrentBillingGroup() {
+  const index = currentBillingGroupIndex();
+  if (index < 0) return;
   const item = billingGroups[index];
-  if (!item) return;
-  if ((item.ha_sources || []).length && !confirm(`Gruppe „${item.name || 'Abrechnungsgruppe'}“ inklusive zugewiesener Sensoren löschen?`)) return;
+  const sensorCount = (item.ha_sources || []).length;
+  if (!confirm(`Sensorgruppe „${item.name || 'Abrechnungsgruppe'}“${sensorCount ? ` inklusive ${sensorCount} Sensor(en)` : ''} wirklich löschen?`)) return;
   billingGroups.splice(index, 1);
-  renderBillingGroups();
-  renderBillingGroupTargets();
+  selectedBillingGroupId = billingGroups[index]?.id || billingGroups[index - 1]?.id || '';
+  renderBillingGroupSelector();
+  renderActiveBillingGroup();
   renderHaCandidateOptions();
-}
-
-function moveBillingGroup(index, direction) {
-  const target = index + direction;
-  if (target < 0 || target >= billingGroups.length) return;
-  [billingGroups[index], billingGroups[target]] = [billingGroups[target], billingGroups[index]];
-  renderBillingGroups();
-  renderBillingGroupTargets(billingGroups[target]?.id || billingGroups[index]?.id);
   syncBillingGroups();
 }
 
-function renderBillingGroupTargets(preferredId='') {
-  const select = document.getElementById('billing_group_target');
+function moveCurrentBillingGroup(direction) {
+  const index = currentBillingGroupIndex();
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= billingGroups.length) return;
+  [billingGroups[index], billingGroups[target]] = [billingGroups[target], billingGroups[index]];
+  renderBillingGroupSelector();
+  renderActiveBillingGroup();
+  syncBillingGroups();
+}
+
+function renderBillingGroupSelector() {
+  const select = document.getElementById('active_billing_group');
+  const up = document.getElementById('billing_group_up');
+  const down = document.getElementById('billing_group_down');
+  const del = document.getElementById('billing_group_delete');
   if (!select) return;
-  const previous = preferredId || select.value;
+
   if (!billingGroups.length) {
-    select.innerHTML = '<option value="">Zuerst Abrechnungsgruppe anlegen</option>';
-    select.value = '';
+    selectedBillingGroupId = '';
+    select.innerHTML = '<option value="">Noch keine Sensorgruppe angelegt</option>';
+    select.disabled = true;
+    if (up) up.disabled = true;
+    if (down) down.disabled = true;
+    if (del) del.disabled = true;
     return;
   }
-  select.innerHTML = billingGroups.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name || 'Abrechnungsgruppe')}</option>`).join('');
-  if (billingGroups.some(item => item.id === previous)) select.value = previous;
+
+  if (!billingGroups.some(group => group.id === selectedBillingGroupId)) {
+    selectedBillingGroupId = billingGroups[0].id;
+  }
+  select.disabled = false;
+  select.innerHTML = billingGroups.map(group => {
+    const count = (group.ha_sources || []).length;
+    return `<option value="${escapeHtml(group.id)}">${escapeHtml(group.name || 'Abrechnungsgruppe')} (${count})</option>`;
+  }).join('');
+  select.value = selectedBillingGroupId;
+
+  const index = currentBillingGroupIndex();
+  if (up) up.disabled = index <= 0;
+  if (down) down.disabled = index < 0 || index >= billingGroups.length - 1;
+  if (del) del.disabled = index < 0;
 }
 
 function renderHaCandidateOptions() {
   const select = document.getElementById('ha_entity_select');
+  const addButton = document.getElementById('add_ha_sensor_button');
   const filter = (document.getElementById('ha_entity_filter')?.value || '').toLowerCase();
   const kindFilter = document.getElementById('ha_kind_filter')?.value || 'all';
   if (!select) return;
+
+  const hasGroup = !!currentBillingGroup();
+  select.disabled = !hasGroup;
+  if (addButton) addButton.disabled = !hasGroup;
+  if (!hasGroup) {
+    select.innerHTML = '<option value="">Zuerst eine Sensorgruppe anlegen</option>';
+    return;
+  }
+
   const selectedIds = allAssignedIds();
   const rows = haCandidates.filter(item =>
     !selectedIds.has(item.entity_id) &&
     (kindFilter === 'all' || item.kind === kindFilter) &&
     (!filter || `${item.label} ${item.entity_id} ${item.kind} ${item.unit || ''}`.toLowerCase().includes(filter))
   );
-  select.innerHTML = rows.length ? rows.map(item => `<option value="${escapeHtml(item.entity_id)}">${escapeHtml(item.label)} · ${escapeHtml(item.entity_id)} · ${escapeHtml(kindLabel(item.kind))}${item.unit ? ' · '+escapeHtml(item.unit) : ''}</option>`).join('') : '<option value="">Keine passende Entität</option>';
+  select.innerHTML = rows.length
+    ? rows.map(item => `<option value="${escapeHtml(item.entity_id)}">${escapeHtml(item.label)} · ${escapeHtml(item.entity_id)} · ${escapeHtml(kindLabel(item.kind))}${item.unit ? ' · '+escapeHtml(item.unit) : ''}</option>`).join('')
+    : '<option value="">Keine passende Entität</option>';
 }
 
 function addHaSource() {
-  const targetId = document.getElementById('billing_group_target')?.value;
+  const target = currentBillingGroup();
   const entityId = document.getElementById('ha_entity_select')?.value;
-  if (!targetId) {
-    alert('Bitte zuerst eine Abrechnungsgruppe anlegen.');
+  if (!target) {
+    alert('Bitte zuerst eine Sensorgruppe anlegen.');
     return;
   }
   if (!entityId) return;
-  const target = billingGroups.find(group => group.id === targetId);
   const item = haCandidates.find(x => x.entity_id === entityId);
-  if (!target || !item || allAssignedIds().has(entityId)) return;
+  if (!item || allAssignedIds().has(entityId)) return;
   target.ha_sources = target.ha_sources || [];
   target.ha_sources.push({
     entity_id: item.entity_id,
@@ -344,70 +417,69 @@ function addHaSource() {
     state_class: item.state_class || '',
     domain: item.domain || ''
   });
-  renderBillingGroups();
-  renderBillingGroupTargets(targetId);
+  renderBillingGroupSelector();
+  renderActiveBillingGroup();
   renderHaCandidateOptions();
+  syncBillingGroups();
 }
 
-function updateHaSource(groupIndex, sourceIndex, field, value) {
-  const source = billingGroups[groupIndex]?.ha_sources?.[sourceIndex];
+function updateHaSource(sourceIndex, field, value) {
+  const source = currentBillingGroup()?.ha_sources?.[sourceIndex];
   if (!source) return;
   source[field] = field === 'include_in_total' ? !!value : (field === 'nominal_power_w' ? Number(String(value).replace(',', '.')) || 0 : value);
   syncBillingGroups();
 }
 
-function removeHaSource(groupIndex, sourceIndex) {
-  if (!billingGroups[groupIndex]?.ha_sources) return;
-  billingGroups[groupIndex].ha_sources.splice(sourceIndex, 1);
-  renderBillingGroups();
+function removeHaSource(sourceIndex) {
+  const group = currentBillingGroup();
+  if (!group?.ha_sources) return;
+  group.ha_sources.splice(sourceIndex, 1);
+  renderBillingGroupSelector();
+  renderActiveBillingGroup();
   renderHaCandidateOptions();
+  syncBillingGroups();
 }
 
-function renderBillingGroups() {
-  const box = document.getElementById('billing_groups_list');
+function renderActiveBillingGroup() {
+  const box = document.getElementById('active_billing_group_editor');
   if (!box) return;
-  if (!billingGroups.length) {
-    box.innerHTML = '<p class="muted">Noch keine Abrechnungsgruppe angelegt. Über „+ Abrechnungsgruppe“ kannst du z. B. HomeOffice, Server oder Klimaanlage anlegen.</p>';
+  const group = currentBillingGroup();
+  if (!group) {
+    box.innerHTML = '<div class="billing-group-empty"><p class="muted">Noch keine Sensorgruppe angelegt. Klicke auf „+ Neue Sensorgruppe“, vergib einen Namen und füge anschließend die gewünschten Verbrauchssensoren hinzu.</p></div>';
     syncBillingGroups();
-    renderBillingGroupTargets();
     return;
   }
-  box.innerHTML = billingGroups.map((group, gi) => {
-    const sources = group.ha_sources || [];
-    const sourceHtml = sources.length ? sources.map((src, si) => `
-      <div class="ha-source-item">
-        <div class="ha-source-head">
-          <div><strong>${escapeHtml(src.label || src.entity_id)}</strong><br><code>${escapeHtml(src.entity_id)}</code></div>
-          <button type="button" class="danger small-button" onclick="removeHaSource(${gi}, ${si})">Entfernen</button>
-        </div>
-        <div class="ha-source-grid">
-          <label><span>Anzeigename</span><input type="text" value="${escapeHtml(src.label || '')}" oninput="updateHaSource(${gi}, ${si}, 'label', this.value)"></label>
-          <label><span>Auswertung</span>
-            <select onchange="updateHaSource(${gi}, ${si}, 'mode', this.value)">
-              <option value="auto" ${src.mode === 'auto' ? 'selected' : ''}>Automatisch</option>
-              <option value="energy" ${src.mode === 'energy' ? 'selected' : ''}>Energiezähler (kWh/Wh)</option>
-              <option value="power" ${src.mode === 'power' ? 'selected' : ''}>Leistung integrieren (W/kW)</option>
-              <option value="runtime" ${src.mode === 'runtime' ? 'selected' : ''}>Laufzeit × Nennleistung (Legacy)</option>
-            </select>
-          </label>
-          <label><span>Nennleistung W (nur Laufzeit)</span><input type="number" min="0" step="1" value="${Number(src.nominal_power_w || 0)}" oninput="updateHaSource(${gi}, ${si}, 'nominal_power_w', this.value)"></label>
-          <label class="checkbox ha-sum-checkbox"><input type="checkbox" ${src.include_in_total !== false ? 'checked' : ''} onchange="updateHaSource(${gi}, ${si}, 'include_in_total', this.checked)"><span>In Gruppensumme einrechnen</span></label>
-        </div>
-      </div>`).join('') : '<p class="muted small">Noch keine Sensoren zugewiesen.</p>';
-    return `
-      <div class="billing-group-card">
-        <div class="billing-group-head">
-          <label class="billing-group-name"><span>Gruppenname</span><input type="text" value="${escapeHtml(group.name || '')}" placeholder="z. B. HomeOffice" oninput="updateBillingGroup(${gi}, 'name', this.value)"></label>
-          <div class="billing-group-meta">${sources.length} Sensor(en)</div>
-          <div class="billing-group-actions">
-            <button type="button" class="button secondary small-button" onclick="moveBillingGroup(${gi}, -1)" ${gi === 0 ? 'disabled' : ''}>↑</button>
-            <button type="button" class="button secondary small-button" onclick="moveBillingGroup(${gi}, 1)" ${gi === billingGroups.length - 1 ? 'disabled' : ''}>↓</button>
-            <button type="button" class="danger small-button" onclick="removeBillingGroup(${gi})">Gruppe löschen</button>
-          </div>
-        </div>
-        <div class="ha-source-list">${sourceHtml}</div>
-      </div>`;
-  }).join('');
+
+  const sources = group.ha_sources || [];
+  const sourceHtml = sources.length ? sources.map((src, si) => `
+    <div class="ha-source-item">
+      <div class="ha-source-head">
+        <div><strong>${escapeHtml(src.label || src.entity_id)}</strong><br><code>${escapeHtml(src.entity_id)}</code></div>
+        <button type="button" class="danger small-button" onclick="removeHaSource(${si})">Entfernen</button>
+      </div>
+      <div class="ha-source-grid">
+        <label><span>Anzeigename</span><input type="text" value="${escapeHtml(src.label || '')}" oninput="updateHaSource(${si}, 'label', this.value)"></label>
+        <label><span>Auswertung</span>
+          <select onchange="updateHaSource(${si}, 'mode', this.value)">
+            <option value="auto" ${src.mode === 'auto' ? 'selected' : ''}>Automatisch</option>
+            <option value="energy" ${src.mode === 'energy' ? 'selected' : ''}>Energiezähler (kWh/Wh)</option>
+            <option value="power" ${src.mode === 'power' ? 'selected' : ''}>Leistung integrieren (W/kW)</option>
+            <option value="runtime" ${src.mode === 'runtime' ? 'selected' : ''}>Laufzeit × Nennleistung (Legacy)</option>
+          </select>
+        </label>
+        <label><span>Nennleistung W (nur Laufzeit)</span><input type="number" min="0" step="1" value="${Number(src.nominal_power_w || 0)}" oninput="updateHaSource(${si}, 'nominal_power_w', this.value)"></label>
+        <label class="checkbox ha-sum-checkbox"><input type="checkbox" ${src.include_in_total !== false ? 'checked' : ''} onchange="updateHaSource(${si}, 'include_in_total', this.checked)"><span>In Gruppensumme einrechnen</span></label>
+      </div>
+    </div>`).join('') : '<p class="muted small">Dieser Gruppe sind noch keine Sensoren zugewiesen.</p>';
+
+  box.innerHTML = `
+    <div class="billing-group-card active-group-card">
+      <div class="active-group-head">
+        <label class="billing-group-name"><span>Gruppenname</span><input id="active_billing_group_name" type="text" value="${escapeHtml(group.name || '')}" placeholder="z. B. HomeOffice" oninput="updateCurrentBillingGroupName(this.value)"></label>
+        <div class="billing-group-meta"><strong>${sources.length}</strong> Sensor(en) in dieser Gruppe</div>
+      </div>
+      <div class="ha-source-list">${sourceHtml}</div>
+    </div>`;
   syncBillingGroups();
 }
 
@@ -437,8 +509,8 @@ function toggleEvccSources() {
 
 document.getElementById('group-form')?.addEventListener('submit', syncBillingGroups);
 document.addEventListener('DOMContentLoaded', () => {
-  renderBillingGroups();
-  renderBillingGroupTargets();
+  renderBillingGroupSelector();
+  renderActiveBillingGroup();
   renderHaCandidateOptions();
   toggleGridPriceMode();
   toggleEvccSources();

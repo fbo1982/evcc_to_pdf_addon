@@ -45,3 +45,11 @@ Diese Regeln sollen bei allen weiteren Änderungen am Projekt beibehalten werden
 - Summen-/Preislogik testen.
 - Standard-PDF-Kontext prüfen: HA-Sensordetails verborgen, Fahrzeuge detailliert.
 - ZIP erstellen und mit `unzip -t` prüfen.
+
+## Sensorgruppen-Oberfläche
+- Innerhalb einer Abrechnung dürfen beliebig viele Sensorgruppen existieren.
+- Im Editor wird **immer nur eine Sensorgruppe gleichzeitig** angezeigt und bearbeitet.
+- Die aktive Sensorgruppe wird über ein Dropdown gewählt.
+- Sensoren werden ohne zusätzliche Zielgruppen-Auswahl automatisch der aktiven Gruppe zugeordnet.
+- Andere Gruppen dürfen beim Bearbeiten der aktiven Gruppe nicht als parallele Karten eingeblendet werden.
+- Fahrzeuge bleiben außerhalb der Sensorgruppen und werden im PDF weiterhin einzeln transparent ausgewiesen.

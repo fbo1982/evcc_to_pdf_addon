@@ -21,7 +21,7 @@
     <li><strong>Abrechnungen:</strong> {{ settings.groups|length }}</li>
     <li><strong>Gruppen mit EVCC:</strong> {{ settings.groups|selectattr('include_evcc','equalto',true)|list|length }}</li>
     {% set ns = namespace(ha_sources=0, billing_groups=0) %}{% for g in settings.groups %}{% set ns.ha_sources = ns.ha_sources + (g.ha_sources|length) %}{% set ns.billing_groups = ns.billing_groups + (g.billing_groups|length) %}{% endfor %}
-    <li><strong>Sensor-Abrechnungsgruppen:</strong> {{ ns.billing_groups }}</li>
+    <li><strong>Sensorgruppen:</strong> {{ ns.billing_groups }}</li>
     <li><strong>HA-Verbrauchssensoren:</strong> {{ ns.ha_sources }}</li>
     <li><strong>Templates:</strong> {{ settings.templates|length }}</li>
     <li><strong>Scheduler:</strong> {{ "aktiv" if settings.scheduler.enabled else "inaktiv" }}</li>

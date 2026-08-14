@@ -81,7 +81,7 @@ BMF_RATE_CATALOG = {
         "source": "BMF/Destatis",
     },
 }
-APP_VERSION = "1.3.03"
+APP_VERSION = "1.3.04"
 
 DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
 <html lang="de">
@@ -472,7 +472,7 @@ def _restore_latest_backup():
 def _copy_legacy_sidecars(source_dir):
     """Copy recoverable caches/backups from an older storage directory into /data.
 
-    Existing v1.3.03 files always win. The old storage is never modified so an update
+    Existing persistent files always win. The old storage is never modified so an update
     can be rolled back without destroying the previous configuration.
     """
     source_dir = Path(source_dir)

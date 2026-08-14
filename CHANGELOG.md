@@ -2,6 +2,23 @@
 
 Alle relevanten Änderungen an **EVCC to PDF** werden hier versionsweise dokumentiert.
 
+## v1.3.04 – 14.08.2026
+
+### Übersichtlicher Sensorgruppen-Editor
+- Home-Assistant-Sensorgruppen werden nicht mehr gleichzeitig untereinander dargestellt.
+- Neues Dropdown **Sensorgruppe auswählen**: Es ist immer genau eine Gruppe aktiv und sichtbar.
+- Beim Bearbeiten werden nur Gruppenname und Sensoren der ausgewählten Gruppe angezeigt; alle anderen Gruppen bleiben ausgeblendet.
+- **+ Neue Sensorgruppe** legt eine Gruppe an und aktiviert sie sofort, sodass der Name direkt vergeben werden kann.
+- Der Sensorpicker ordnet neue Sensoren automatisch der aktiven Gruppe zu; die zusätzliche Auswahl **Zielgruppe** entfällt.
+- Sortieren und Löschen wirken ausschließlich auf die aktuell ausgewählte Gruppe.
+- Das Dropdown zeigt zusätzlich die Anzahl der zugeordneten Sensoren pro Gruppe an.
+
+### Kompatibilität
+- Datenmodell und PDF-Ausgabe bleiben unverändert: beliebig viele Sensorgruppen, beliebig viele Sensoren, HA-Gruppen nur als Summe und Fahrzeuge weiterhin einzeln transparent.
+- Bestehende v1.3.03-Konfigurationen sind ohne Migration kompatibel.
+- Persistenz, Legacy-Migration, Backups, Gunicorn und Home-Assistant-App-Lifecycle aus v1.3.03 bleiben unverändert erhalten.
+- Versionsnummer auf **v1.3.04** angehoben.
+
 ## v1.3.03 – 14.08.2026
 
 ### Persistenz & Update-Sicherheit

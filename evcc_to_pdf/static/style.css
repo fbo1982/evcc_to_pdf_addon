@@ -164,3 +164,19 @@ hr { border:0; border-top:1px solid rgba(122,166,232,.28); margin:18px 0; }
 .billing-group-actions button[disabled] { opacity:.35; cursor:not-allowed; }
 @media (max-width:1200px) { .billing-group-picker { grid-template-columns:1fr 1fr; } .billing-group-picker button { width:100%; } }
 @media (max-width:800px) { .billing-group-picker { grid-template-columns:1fr; } .billing-group-head { grid-template-columns:1fr; } .billing-group-actions { justify-content:flex-start; } }
+
+
+/* v1.3.04 – fokussierter Editor: immer nur eine Sensorgruppe sichtbar */
+.billing-group-toolbar { display:grid; grid-template-columns:minmax(260px,1fr) auto; gap:12px; align-items:end; margin:16px 0; padding:14px; border:1px solid rgba(72,199,255,.26); border-radius:16px; background:rgba(3,18,50,.24); }
+.billing-group-selector { margin:0; }
+.billing-group-toolbar-actions { display:flex; gap:8px; align-items:center; justify-content:flex-end; flex-wrap:wrap; }
+.billing-group-toolbar-actions button[disabled], #add_ha_sensor_button[disabled] { opacity:.35; cursor:not-allowed; }
+.active-group-card { margin:0 0 16px; }
+.active-group-head { display:grid; grid-template-columns:minmax(240px,1.4fr) auto; gap:14px; align-items:end; }
+.billing-group-empty { margin:0 0 16px; padding:18px; border:1px dashed rgba(122,166,232,.30); border-radius:16px; background:rgba(3,18,50,.20); }
+.sensor-picker-panel { margin-top:16px; padding-top:16px; border-top:1px solid rgba(122,166,232,.20); }
+.sensor-picker-panel h4 { margin:0 0 4px; }
+/* Zielgruppen-Spalte aus v1.3.02 entfällt: die Dropdown-Auswahl oben ist gleichzeitig Bearbeitungs- und Zielgruppe. */
+.sensor-picker-panel .billing-group-picker { grid-template-columns:minmax(180px,1fr) minmax(160px,.8fr) minmax(260px,1.5fr) auto; }
+@media (max-width:1000px) { .sensor-picker-panel .billing-group-picker { grid-template-columns:1fr 1fr; } }
+@media (max-width:720px) { .billing-group-toolbar, .active-group-head, .sensor-picker-panel .billing-group-picker { grid-template-columns:1fr; } .billing-group-toolbar-actions { justify-content:flex-start; } }
