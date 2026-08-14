@@ -5,9 +5,9 @@
     <div>
       <span class="eyebrow">EVCC · Home Assistant · Shelly · Klima · IT</span>
       <h2>Modulare Energieabrechnung für E-Mobilität & Homeoffice</h2>
-      <p class="muted">Verbrauchsquellen zu Gruppen zusammenfassen, Stromkosten für einen Zeitraum ermitteln, als PDF ausgeben und automatisch versenden.</p>
+      <p class="muted">Beliebig viele Verbrauchssensoren zu benannten Abrechnungsgruppen zusammenfassen, Fahrzeuge transparent einzeln ausweisen und alles in einer gemeinsamen PDF abrechnen.</p>
       <div class="actions">
-        <a class="button" href="{{ ingress_path }}/groups">Gruppen konfigurieren</a>
+        <a class="button" href="{{ ingress_path }}/groups">Abrechnung konfigurieren</a>
         <a class="button secondary" href="{{ ingress_path }}/report">Abrechnung erstellen</a>
       </div>
     </div>
@@ -18,9 +18,10 @@
   <h2>Status</h2>
   <ul class="stats">
     <li><strong>EVCC-Fahrzeuge:</strong> {{ settings.cached_assets|length }}</li>
-    <li><strong>Abrechnungsgruppen:</strong> {{ settings.groups|length }}</li>
+    <li><strong>Abrechnungen:</strong> {{ settings.groups|length }}</li>
     <li><strong>Gruppen mit EVCC:</strong> {{ settings.groups|selectattr('include_evcc','equalto',true)|list|length }}</li>
-    {% set ns = namespace(ha_sources=0) %}{% for g in settings.groups %}{% set ns.ha_sources = ns.ha_sources + (g.ha_sources|length) %}{% endfor %}
+    {% set ns = namespace(ha_sources=0, billing_groups=0) %}{% for g in settings.groups %}{% set ns.ha_sources = ns.ha_sources + (g.ha_sources|length) %}{% set ns.billing_groups = ns.billing_groups + (g.billing_groups|length) %}{% endfor %}
+    <li><strong>Sensor-Abrechnungsgruppen:</strong> {{ ns.billing_groups }}</li>
     <li><strong>HA-Verbrauchssensoren:</strong> {{ ns.ha_sources }}</li>
     <li><strong>Templates:</strong> {{ settings.templates|length }}</li>
     <li><strong>Scheduler:</strong> {{ "aktiv" if settings.scheduler.enabled else "inaktiv" }}</li>

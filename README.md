@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.3.01-22c55e">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.3.02-22c55e">
   <img alt="Home Assistant" src="https://img.shields.io/badge/Home%20Assistant-App-41BDF5">
   <img alt="EVCC" src="https://img.shields.io/badge/EVCC-compatible-00c853">
   <img alt="Homeoffice" src="https://img.shields.io/badge/Homeoffice-Energieabrechnung-1597ff">
@@ -12,74 +12,98 @@
 
 # EVCC to PDF
 
-**EVCC to PDF** ist ein modularer Energie-Abrechnungsbaukasten für Home Assistant. Eine Abrechnungsgruppe kann **EVCC-Ladevorgänge und Home-Assistant-Verbrauchssensoren gemeinsam** enthalten. Alle Verbraucher werden für denselben Zeitraum ausgewertet, mit demselben Gruppenstrompreis verrechnet und in **einer Abrechnung / einem PDF** zusammengeführt.
+**EVCC to PDF** erstellt gemeinsame Energieabrechnungen aus EVCC-Ladevorgängen und Home-Assistant-Verbrauchssensoren. Sensoren können in **beliebig vielen frei benannten Abrechnungsgruppen** zusammengefasst werden. Fahrzeuge bleiben dagegen bewusst einzeln und transparent sichtbar.
 
-Typische Verbraucher sind Dienstwagen, Shelly-Energiezähler, einzelne Stromkreise, Server, 3D-Drucker oder eine Klimaanlage mit eigenem Energie-/Leistungssensor.
+Beispiel für eine einzige Abrechnung:
 
-## Neu in v1.3.01
+- **HomeOffice** → Shelly L1 + Shelly L2 + Shelly L3 + Shelly 3D-Drucker
+- **Server** → Shelly Server + Shelly Router
+- **Klimaanlage** → Energie-/Leistungssensor der Klimaanlage
+- **Fahrzeuge** → BMW iX1, Silence S04 usw. mit einzelnen EVCC-Ladevorgängen
 
-- keine getrennten Gruppentypen EVCC / Home Assistant mehr
-- EVCC-Fahrzeuge und HA-Verbrauchssensoren können in derselben Gruppe kombiniert werden
-- ein gemeinsamer Strompreis pro Abrechnungsgruppe
-- BMF-/Destatis-Automatik kann für die komplette Gruppenabrechnung verwendet werden
-- gemeinsame Gesamtsumme aus EVCC-Verbrauch + einbezogenen HA-Sensoren
-- Fahrzeug-Zwischensummen bleiben erhalten
-- HA-Verbraucher werden zusätzlich als eigene Positionen dargestellt
-- Sensorliste zeigt nur **Energie- und Leistungssensoren**
-- EVCC-eigene Home-Assistant-Sensoren werden automatisch ausgefiltert
-- zusätzlicher Filter für **Alle / Energie / Leistung**
-- bestehende v1.3.0-Gruppen werden automatisch migriert
+Alle Positionen verwenden denselben Abrechnungszeitraum und denselben Strompreis. In der PDF werden die Home-Assistant-Sensoren **nicht einzeln offengelegt**: Dort erscheinen nur die Namen und Summen ihrer Abrechnungsgruppen. Fahrzeuge werden weiterhin einzeln mit Ladevorgängen und Fahrzeug-Zwischensummen aufgelistet.
 
-## Beispiel: eine gemeinsame Homeoffice-Abrechnung
+## Neu in v1.3.02
 
-Eine einzige Gruppe **„Homeoffice-Abrechnung“** kann z. B. enthalten:
+- beliebig viele benannte **Sensor-Abrechnungsgruppen** innerhalb einer Abrechnung
+- beliebig viele HA-Verbrauchssensoren je Gruppe
+- Gruppen können frei benannt, gelöscht und in der PDF-Reihenfolge verschoben werden
+- Sensorpicker mit Suche und Filter **Alle / Energie / Leistung**
+- EVCC-eigene Home-Assistant-Sensoren werden aus dem Picker ausgefiltert
+- ein Sensor kann über die UI nur einer Sensorgruppe zugeordnet werden
+- Schalter **„In Gruppensumme einrechnen“** bleibt zum Schutz vor Doppelzählungen erhalten
+- PDF zeigt für HA nur **Gruppenname + Gruppenverbrauch + Gruppenbetrag**
+- Fahrzeuge bleiben detailliert und einzeln sichtbar
+- gemeinsamer manueller oder BMF-/Destatis-Strompreis für die komplette Abrechnung
+- automatische Migration der flachen HA-Sensorliste aus v1.3.01
+- unverändertes v1.3.01-Standardtemplate wird auf die neue Gruppenausgabe migriert; eigene Template-Anpassungen bleiben unangetastet
 
-- EVCC: Dienstwagen / Ladevorgänge
-- Shelly Phase 1
-- Shelly Phase 2
-- Shelly Phase 3
-- Shelly Plug 3D-Drucker
-- Shelly Server
-- Energie- oder Leistungssensor der Klimaanlage
+## Datenmodell
 
-Alle enthaltenen Verbraucher werden über denselben Abrechnungszeitraum ermittelt. Am Ende entstehen eine gemeinsame kWh-Summe und ein gemeinsamer Rechnungsbetrag.
+Die Konfiguration ist ab v1.3.02 bewusst in zwei Ebenen getrennt:
 
-### Doppelzählung verhindern
+**Abrechnung**
 
-Wenn beispielsweise „Phase 1“ den 3D-Drucker bereits enthält, kann der separate Shelly Plug des Druckers im PDF als Detail angezeigt werden, ohne erneut in die Gesamtsumme einzugehen. Dafür gibt es pro HA-Quelle die Option **„In Gruppensumme einrechnen“**.
+- Empfänger, Absender, Bankdaten
+- Zeitraum und Versand
+- gemeinsamer Strompreis
+- ausgewählte EVCC-Fahrzeuge
+- beliebig viele Sensor-Abrechnungsgruppen
 
-## Verbrauchsermittlung
+**Sensor-Abrechnungsgruppe**
 
-### EVCC
+- frei wählbarer Gruppenname
+- beliebig viele Home-Assistant-Verbrauchssensoren
+- Gruppensumme in kWh und Euro
 
-EVCC-Ladevorgänge werden wie bisher aus den Sessions gelesen und nach Fahrzeug untergliedert. Pro Fahrzeug werden Ladevorgänge und Zwischensummen ausgegeben.
+Fahrzeuge werden nicht in den Sensorgruppen versteckt. Sie bleiben als eigenständige, nachvollziehbare Positionen der Abrechnung erhalten.
 
-### Home Assistant
+## Sensorfilter
 
-Im Sensorpicker werden nur für die Abrechnung geeignete Verbrauchssensoren angeboten:
+Im HA-Picker werden nur für die Verbrauchsermittlung geeignete Sensoren angeboten:
 
 - **Energie:** Wh, kWh, MWh
 - **Leistung:** W, kW, MW
 
-EVCC-eigene HA-Entitäten werden aus dieser Liste entfernt, damit die gleichen Ladevorgänge nicht versehentlich zusätzlich über HA-Sensoren erfasst werden.
+EVCC-eigene HA-Entitäten werden automatisch entfernt, damit Ladevorgänge nicht versehentlich doppelt erfasst werden. Energiezähler werden bevorzugt aus Home-Assistant-Langzeitstatistiken ermittelt; Leistungssensoren werden über den Abrechnungszeitraum zu kWh integriert.
 
-Energiezähler werden bevorzugt über Home-Assistant-Langzeitstatistiken ausgewertet. Leistungssensoren werden über den Zeitraum integriert und in kWh umgerechnet.
+## Doppelzählung vermeiden
+
+Wenn beispielsweise `Shelly L1` bereits den 3D-Drucker enthält und zusätzlich ein eigener Shelly Plug am Drucker existiert, kann der Detail-Sensor in derselben Gruppe hinterlegt, aber mit **„In Gruppensumme einrechnen“ = aus** markiert werden.
+
+Der Sensor bleibt damit konfiguriert, beeinflusst aber weder Gruppen- noch Gesamtsumme.
 
 ## Strompreis
 
-Der Strompreis gehört zur **gesamten Abrechnungsgruppe** und gilt somit gleichermaßen für Fahrzeuge und HA-Verbraucher.
+Der Strompreis gilt **einmal pro Abrechnung** für alle Sensorgruppen und Fahrzeuge.
 
 ### Manuell
 
-Ein Preis-Override kann in €/kWh eingetragen werden. Bleibt er leer, wird der Standard-Strompreis aus den Einstellungen verwendet.
+Ein Preis-Override kann in €/kWh eingetragen werden. Bleibt er leer, wird der Standard-Strompreis aus den Einstellungen verwendet. Bei manueller Preiswahl zeigt die PDF nur:
 
-Bei manueller Preiswahl erscheint im PDF nur der zugrunde gelegte Strompreis; die Zeile **„Preisermittlung“** entfällt.
+> Zugrunde gelegter Strompreis: … €/kWh
+
+Eine zusätzliche Zeile „Preisermittlung“ wird nicht ausgegeben.
 
 ### BMF-/Destatis-Automatik
 
-Ist die Automatik aktiviert, wird der für das Abrechnungsjahr hinterlegte bzw. ermittelte Wert für die komplette Gruppe verwendet. Im PDF werden zusätzlich Preisermittlung und Grundlage ausgegeben.
+Ist die Automatik aktiviert, verwendet die Abrechnung den für das Abrechnungsjahr ermittelten Wert. In der PDF werden zusätzlich Preisermittlung und Datengrundlage angezeigt.
 
 > **Hinweis:** Das Projekt ist ein technisches Abrechnungswerkzeug und keine Steuer-, Rechts- oder Lohnabrechnungsberatung.
+
+## PDF-Ausgabe
+
+Das Standardtemplate zeigt:
+
+1. jedes EVCC-Fahrzeug einzeln
+2. darunter dessen einzelne Ladevorgänge
+3. Fahrzeug-Zwischensumme
+4. anschließend die benannten Sensor-Abrechnungsgruppen nur als Summenpositionen
+5. Gesamtverbrauch und Gesamtkosten
+6. zugrunde gelegten Strompreis
+7. bei Preisautomatik zusätzlich Preisermittlung und Grundlage
+
+Die einzelnen Shelly-/HA-Entity-IDs werden im Standard-PDF nicht offengelegt.
 
 ## Installation in Home Assistant
 
@@ -91,45 +115,38 @@ Manuell:
 2. **Repositories** auswählen.
 3. `https://github.com/fbo1982/evcc_to_pdf_addon.git` hinzufügen.
 4. **EVCC to PDF** installieren und starten.
-5. Weboberfläche öffnen.
-6. EVCC und SMTP unter **Einstellungen** konfigurieren.
-7. Unter **Gruppen** eine gemeinsame Abrechnungsgruppe anlegen.
-8. EVCC-Fahrzeuge aktivieren/auswählen und über **HA-Entitäten aktualisieren** die gewünschten Verbrauchssensoren ergänzen.
-9. Strompreis-Modus wählen und eine Vorschau erzeugen.
-
-## PDF-Ausgabe
-
-Das Standardtemplate kann in einer Abrechnung gleichzeitig darstellen:
-
-- EVCC-Fahrzeuge mit Datum, Start, Ende, kWh und Kosten
-- Fahrzeug-Zwischensummen
-- Home-Assistant-Verbraucher mit Entity-ID, kWh, Kosten und Berechnungsmethode
-- Information, ob eine HA-Position in die Gesamtsumme einfließt
-- Gesamtverbrauch aller einbezogenen Verbraucher
-- Gesamtkosten
-- zugrunde gelegten Strompreis
-- bei Automatik zusätzlich Preisermittlung und Grundlage
+5. EVCC und SMTP unter **Einstellungen** konfigurieren.
+6. Unter **Gruppen** eine Abrechnung anlegen.
+7. Gewünschte EVCC-Fahrzeuge auswählen.
+8. **HA-Entitäten aktualisieren**.
+9. Beliebig viele Sensor-Abrechnungsgruppen anlegen, z. B. `HomeOffice`, `Server`, `Klimaanlage`.
+10. Verbrauchssensoren den Gruppen zuweisen.
+11. Strompreis-Modus wählen und Vorschau/PDF erzeugen.
 
 ## Templates
 
 Wichtige Template-Kontexte:
 
-- `group_name`
-- `group_type` (`mixed` ab v1.3.01)
-- `has_evcc`, `has_ha`
-- `vehicle_groups`, `sessions`
-- `ha_sources`
-- `evcc_total_energy`, `evcc_total_cost`
-- `ha_total_energy`, `ha_total_cost`
+- `group_name` – Name der kompletten Abrechnung
+- `vehicle_groups` – Fahrzeuge mit Ladevorgängen und Zwischensummen
+- `billing_groups` – ausgewertete Sensor-Abrechnungsgruppen
+- `sensor_groups` – Alias für `billing_groups`
+- `ha_sources` – flache Sensorliste für Rückwärtskompatibilität eigener Templates
 - `total_energy_kwh`, `total_cost_eur`
 - `electricity_price_eur_kwh`
 - `price_mode`, `price_method_label`, `price_source_label`
 
 Eine vollständige Übersicht steht in [`evcc_to_pdf/PLACEHOLDERS.md`](evcc_to_pdf/PLACEHOLDERS.md).
 
-## Persistenz
+## Persistenz & Update-Sicherheit
 
-Konfiguration, Gruppen und benutzerdefinierte Templates werden persistent im Home-Assistant-App-Konfigurationsbereich gespeichert. Schreibvorgänge erfolgen atomar mit Backups. Erzeugte PDFs werden unter `/share/evcc-pdfs` abgelegt.
+Konfiguration, Gruppen und benutzerdefinierte Templates werden persistent im Home-Assistant-App-Konfigurationsbereich gespeichert. Schreibvorgänge erfolgen atomar mit Backups. Bestehende Datenstrukturen werden versionsübergreifend migriert, ohne benutzerdefinierte Templates pauschal zu überschreiben.
+
+Erzeugte PDFs werden unter `/share/evcc-pdfs` abgelegt.
+
+## Release-Regeln
+
+Die beim Projekt vereinbarten Schritte für Folgeversionen sind zusätzlich in [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) dokumentiert. Dazu gehören insbesondere Persistenz, Migration, Template-Schutz, Versionierung, Changelog und Paketprüfung.
 
 ## Branding
 

@@ -52,6 +52,7 @@ LEGACY_DEFAULT_SOURCE_HASHES = {
     "5492eab4e4ea677da86d5c283c30f9ae1b4e70f3af677161232106487a6f9f01",
     "e845ab04ca5c28a3cc6b9fd568a1b0900bef17922e97605c81f8427390b64f56",
     "392553cc7cb6beb2b9f469c94c5d68e67ed2dfa68e06cd4e145333d9adf7e449",  # v1.3.0 Standardtemplate
+    "0efd4abbbeff1094e32b5410784a0399c1aa6a9de048a09c5b147ee05a20f27b",  # v1.3.01 Standardtemplate
 }
 BMF_RATE_CATALOG = {
     2026: {
@@ -62,7 +63,7 @@ BMF_RATE_CATALOG = {
         "source": "BMF/Destatis",
     },
 }
-APP_VERSION = "1.3.01"
+APP_VERSION = "1.3.02"
 
 DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
 <html lang="de">
@@ -85,8 +86,8 @@ DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
     .date-line { margin-top: 24px; margin-bottom: 30px; }
     .period { margin: 26px 0 8px; font-weight: bold; font-size: 11pt; }
     .group-title { margin: 0 0 20px; color: #164e8a; font-size: 13pt; }
-    .vehicle-section { margin: 0 0 22px; page-break-inside: avoid; }
-    .vehicle-title { margin: 12px 0 7px; font-size: 10.5pt; }
+    .section { margin: 0 0 22px; page-break-inside: avoid; }
+    .section-title { margin: 12px 0 7px; font-size: 10.5pt; }
     table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 9.2pt; table-layout: fixed; }
     th, td { border: 1px solid #64748b; padding: 5px 6px; vertical-align: top; word-wrap: break-word; }
     th { background: #eef4fa; text-align: left; }
@@ -98,8 +99,6 @@ DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
     .closing { margin-top: 24px; }
     .signature { margin-top: 10px; }
     .notice { margin-top: 20px; font-size: 9pt; color: #475569; }
-    .detail-only { color: #64748b; font-size: 8.5pt; }
-    .method { color: #475569; font-size: 8.5pt; }
   </style>
 </head>
 <body>
@@ -123,8 +122,8 @@ DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
 
   {% if vehicle_groups %}
     {% for vehicle_group in vehicle_groups %}
-    <div class="vehicle-section">
-      <div class="vehicle-title"><strong>Fahrzeug: {{ vehicle_group.vehicle }}</strong></div>
+    <div class="section">
+      <div class="section-title"><strong>Fahrzeug: {{ vehicle_group.vehicle }}</strong></div>
       <table>
         <thead>
           <tr>
@@ -152,27 +151,25 @@ DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
     {% endfor %}
   {% endif %}
 
-  {% if ha_sources %}
-  <div class="vehicle-section">
-    <div class="vehicle-title"><strong>Home-Assistant-Verbraucher</strong></div>
+  {% if billing_groups %}
+  <div class="section">
+    <div class="section-title"><strong>Weitere Abrechnungsgruppen</strong></div>
     <table>
       <thead>
         <tr>
-          <th style="width:24%">Verbraucher</th>
-          <th style="width:31%">Home-Assistant-Entität</th>
-          <th style="width:15%">Verbrauch</th>
-          <th style="width:15%">Kosten (€)</th>
-          <th style="width:15%">Summierung</th>
+          <th style="width:38%">Abrechnungsgruppe</th>
+          <th style="width:20%">Verbrauch</th>
+          <th style="width:22%">Strompreis</th>
+          <th style="width:20%">Kosten</th>
         </tr>
       </thead>
       <tbody>
-      {% for source in ha_sources %}
+      {% for item in billing_groups %}
         <tr>
-          <td>{{ source.label }}<div class="method">{{ source.calculation_method }}</div></td>
-          <td>{{ source.entity_id }}</td>
-          <td>{{ source.energy_kwh_formatted }} kWh</td>
-          <td>{{ source.cost_formatted }} €</td>
-          <td>{% if source.include_in_total %}enthalten{% else %}<span class="detail-only">nur Detail</span>{% endif %}</td>
+          <td><strong>{{ item.name }}</strong></td>
+          <td>{{ item.total_energy_kwh }}</td>
+          <td>{{ electricity_price_eur_kwh }}</td>
+          <td>{{ item.total_cost_eur }}</td>
         </tr>
       {% endfor %}
       </tbody>
@@ -181,7 +178,7 @@ DEFAULT_TEMPLATE_SOURCE_HTML = r"""<!DOCTYPE html>
   {% endif %}
 
   <div class="summary">
-    <p><strong>Gesamtverbrauch der Gruppe:</strong> {{ total_energy_kwh }}</p>
+    <p><strong>Gesamtverbrauch:</strong> {{ total_energy_kwh }}</p>
     <p><strong>Gesamtkosten:</strong> {{ total_cost_eur }}</p>
     <div class="price-info">
       <p><strong>Zugrunde gelegter Strompreis:</strong> {{ electricity_price_eur_kwh }}</p>
@@ -578,8 +575,8 @@ def normalize_template_dict(templates):
         seed = create_seed_template_entry()
         out[seed["key"]] = seed
     elif DEFAULT_TEMPLATE_KEY in out and _is_unmodified_legacy_default_template(out[DEFAULT_TEMPLATE_KEY]):
-        # Nur das unveränderte, mit v1.1.2 ausgelieferte Standardtemplate migrieren.
-        # Sobald ein Nutzer es editiert hat, bleibt es unangetastet.
+        # Nur bekannte, unveränderte ausgelieferte Standardtemplates migrieren.
+        # Sobald ein Nutzer das Template editiert hat, bleibt es unangetastet.
         out[DEFAULT_TEMPLATE_KEY] = create_seed_template_entry()
     return out
 
@@ -608,12 +605,31 @@ def normalize_ha_source(source):
     return merged
 
 
+def normalize_billing_group(item):
+    base = {
+        "id": str(uuid.uuid4()),
+        "name": "",
+        "ha_sources": [],
+    }
+    merged = deep_merge(base, item or {})
+    merged["id"] = str(merged.get("id") or uuid.uuid4())
+    merged["name"] = str(merged.get("name") or "Abrechnungsgruppe").strip() or "Abrechnungsgruppe"
+    if not isinstance(merged.get("ha_sources"), list):
+        merged["ha_sources"] = []
+    merged["ha_sources"] = [
+        normalize_ha_source(src)
+        for src in merged["ha_sources"]
+        if isinstance(src, dict) and str(src.get("entity_id") or "").strip()
+    ]
+    return merged
+
+
 def normalize_group(group):
     base = {
         "id": str(uuid.uuid4()),
         "active": True,
         "name": "",
-        "group_type": "mixed",  # Legacy-/Template-Kompatibilität; Gruppen können alle Verbrauchertypen enthalten.
+        "group_type": "mixed",  # Legacy-/Template-Kompatibilität.
         "include_evcc": True,
         "group_icon": "auto",
         "recipient_name": "",
@@ -623,7 +639,8 @@ def normalize_group(group):
         "recipient_zip": "",
         "recipient_city": "",
         "vehicles": [],
-        "ha_sources": [],
+        "billing_groups": [],
+        "ha_sources": [],  # Legacy-/Template-Alias; wird aus billing_groups abgeleitet.
         "grid_price_override": "",
         "grid_price_mode": "manual",
         "sender_mode": "default",
@@ -644,24 +661,37 @@ def normalize_group(group):
     source_group = group or {}
     legacy_group_type = str(source_group.get("group_type") or "").strip().lower()
     merged = deep_merge(base, source_group)
-    # Seit v1.3.01 gibt es keinen getrennten EVCC-/HA-Gruppentyp mehr.
-    # Alte EVCC-Gruppen behalten EVCC automatisch aktiv; alte HA-Gruppen nicht.
+
     if "include_evcc" not in source_group:
         merged["include_evcc"] = legacy_group_type != "homeassistant"
     else:
         merged["include_evcc"] = bool(source_group.get("include_evcc"))
     merged["group_type"] = "mixed"
+
     if not isinstance(merged.get("vehicles"), list):
         merged["vehicles"] = []
     merged["vehicles"] = [str(v) for v in merged["vehicles"] if str(v).strip()]
-    if not isinstance(merged.get("ha_sources"), list):
-        merged["ha_sources"] = []
-    merged["ha_sources"] = [normalize_ha_source(src) for src in merged["ha_sources"] if isinstance(src, dict) and str(src.get("entity_id") or "").strip()]
-    # Preislogik gilt für die komplette Abrechnungsgruppe – unabhängig von der Verbraucherquelle.
+
+    # v1.3.02: HA-Sensoren liegen in beliebig vielen benannten Abrechnungsgruppen.
+    # v1.3.01 hatte noch eine flache ha_sources-Liste. Diese wird einmalig verlustfrei
+    # in eine Abrechnungsgruppe migriert. Der Alias ha_sources bleibt für eigene Templates erhalten.
+    source_billing_groups = source_group.get("billing_groups")
+    billing_groups = []
+    if isinstance(source_billing_groups, list):
+        billing_groups = [normalize_billing_group(item) for item in source_billing_groups if isinstance(item, dict)]
+    else:
+        legacy_sources = source_group.get("ha_sources", [])
+        if isinstance(legacy_sources, list) and legacy_sources:
+            billing_groups = [normalize_billing_group({
+                "name": str(source_group.get("name") or "Home Assistant").strip() or "Home Assistant",
+                "ha_sources": legacy_sources,
+            })]
+    merged["billing_groups"] = billing_groups
+    merged["ha_sources"] = [deepcopy(src) for item in billing_groups for src in item.get("ha_sources", [])]
+
     if str(merged.get("grid_price_mode") or "manual").lower() not in {"manual", "bmf"}:
         merged["grid_price_mode"] = "manual"
     return merged
-
 
 def normalize_settings(raw):
     settings = deep_merge(DEFAULT_SETTINGS, raw or {})
@@ -1671,47 +1701,98 @@ def generate_evcc_summary(settings, group, mode=None, manual_year=None, manual_m
 
 def generate_ha_summary(settings, group, mode=None, manual_year=None, manual_month=None):
     start, end, next_period_start, mode = _resolve_report_period(settings, group, mode, manual_year, manual_month)
-    sources = group.get("ha_sources", [])
-    if not sources:
-        raise ValueError("In dieser Home-Assistant-Gruppe sind noch keine Entitäten konfiguriert.")
+    configured_groups = group.get("billing_groups", [])
+    if not configured_groups:
+        raise ValueError("In dieser Abrechnung sind noch keine Home-Assistant-Abrechnungsgruppen konfiguriert.")
     price_info = price_info_for_group(settings, group, start.year)
     price = float(price_info["price_eur_kwh"])
-    source_rows, rows_html = [], []
+    billing_group_rows = []
+    flat_sources = []
     total_energy = 0.0
-    for source in sources:
-        try:
-            energy, method, unit = calculate_ha_source_consumption(source, start, next_period_start)
-        except Exception as err:
-            if bool(source.get("include_in_total", True)):
-                raise ValueError(f"Quelle {source.get('label') or source.get('entity_id')}: {err}") from err
-            energy, method, unit = 0.0, f"Nicht verfügbar: {err}", str(source.get("unit") or "")
-        include = bool(source.get("include_in_total", True))
-        cost = round(float(energy) * price, 2)
-        if include:
-            total_energy += float(energy)
-        row = {
-            "entity_id": source.get("entity_id", ""), "label": source.get("label") or source.get("entity_id", ""),
-            "mode": source.get("mode", "auto"), "unit": unit, "include_in_total": include,
-            "energy_kwh": float(energy), "energy_kwh_formatted": format_de_number(energy),
-            "cost": cost, "cost_formatted": format_de_number(cost), "calculation_method": method,
-        }
-        source_rows.append(row)
-        rows_html.append(f"<tr><td>{row['label']}</td><td>{row['entity_id']}</td><td>{row['energy_kwh_formatted']}</td><td>{row['cost_formatted']} €</td><td>{'enthalten' if include else 'nur Detail'}</td></tr>")
-    total_cost = round(total_energy * price, 2)
-    return {
-        "group_type": "homeassistant", "rows_html": "\n".join(rows_html), "sessions": [], "vehicle_groups": [], "ha_sources": source_rows,
-        "total_energy": total_energy, "total_cost": total_cost, "total_energy_kwh": f"{format_de_number(total_energy)} kWh",
-        "total_cost_eur": f"{format_de_number(total_cost)} €", "total_energy_formatted": format_de_number(total_energy),
-        "total_cost_formatted": format_de_number(total_cost), "period_start": start, "period_end": end,
-        "period_start_str": start.strftime('%d.%m.%Y'), "period_end_str": end.strftime('%d.%m.%Y'), "billing_mode": mode, **price_info,
-    }
 
+    for billing_group in configured_groups:
+        sources = billing_group.get("ha_sources", [])
+        if not sources:
+            # Leere Gruppen bleiben in der Konfiguration erhalten, erscheinen aber nicht im PDF.
+            continue
+        group_energy = 0.0
+        source_rows = []
+        for source in sources:
+            try:
+                energy, method, unit = calculate_ha_source_consumption(source, start, next_period_start)
+            except Exception as err:
+                if bool(source.get("include_in_total", True)):
+                    raise ValueError(f"Quelle {source.get('label') or source.get('entity_id')}: {err}") from err
+                energy, method, unit = 0.0, f"Nicht verfügbar: {err}", str(source.get("unit") or "")
+            include = bool(source.get("include_in_total", True))
+            cost = round(float(energy) * price, 2)
+            if include:
+                group_energy += float(energy)
+            row = {
+                "entity_id": source.get("entity_id", ""),
+                "label": source.get("label") or source.get("entity_id", ""),
+                "mode": source.get("mode", "auto"),
+                "unit": unit,
+                "include_in_total": include,
+                "energy_kwh": float(energy),
+                "energy_kwh_formatted": format_de_number(energy),
+                "cost": cost,
+                "cost_formatted": format_de_number(cost),
+                "calculation_method": method,
+                "billing_group_id": billing_group.get("id", ""),
+                "billing_group_name": billing_group.get("name", ""),
+            }
+            source_rows.append(row)
+            flat_sources.append(row)
+
+        group_cost = round(group_energy * price, 2)
+        total_energy += group_energy
+        billing_group_rows.append({
+            "id": billing_group.get("id", ""),
+            "name": billing_group.get("name") or "Abrechnungsgruppe",
+            "sources": source_rows,
+            "source_count": len(source_rows),
+            "included_source_count": sum(1 for item in source_rows if item.get("include_in_total")),
+            "total_energy": group_energy,
+            "total_cost": group_cost,
+            "total_energy_formatted": format_de_number(group_energy),
+            "total_cost_formatted": format_de_number(group_cost),
+            "total_energy_kwh": f"{format_de_number(group_energy)} kWh",
+            "total_cost_eur": f"{format_de_number(group_cost)} €",
+        })
+
+    # Die HA-Teilsumme entspricht exakt der Summe der im PDF sichtbaren Gruppensummen.
+    total_cost = round(sum(float(item.get("total_cost", 0) or 0) for item in billing_group_rows), 2)
+    return {
+        "group_type": "homeassistant",
+        "rows_html": "".join(
+            f"<tr><td>Abrechnungsgruppe</td><td>{item['name']}</td><td></td>"
+            f"<td>{item['total_energy_formatted']}</td><td>{item['total_cost_eur']}</td><td>enthalten</td></tr>"
+            for item in billing_group_rows
+        ),
+        "sessions": [],
+        "vehicle_groups": [],
+        "ha_sources": flat_sources,
+        "billing_groups": billing_group_rows,
+        "total_energy": total_energy,
+        "total_cost": total_cost,
+        "total_energy_kwh": f"{format_de_number(total_energy)} kWh",
+        "total_cost_eur": f"{format_de_number(total_cost)} €",
+        "total_energy_formatted": format_de_number(total_energy),
+        "total_cost_formatted": format_de_number(total_cost),
+        "period_start": start,
+        "period_end": end,
+        "period_start_str": start.strftime('%d.%m.%Y'),
+        "period_end_str": end.strftime('%d.%m.%Y'),
+        "billing_mode": mode,
+        **price_info,
+    }
 
 def _blank_component_summary(settings, group, mode=None, manual_year=None, manual_month=None):
     start, end, _next_period_start, resolved_mode = _resolve_report_period(settings, group, mode, manual_year, manual_month)
     price_info = price_info_for_group(settings, group, start.year)
     return {
-        "rows_html": "", "sessions": [], "vehicle_groups": [], "ha_sources": [],
+        "rows_html": "", "sessions": [], "vehicle_groups": [], "ha_sources": [], "billing_groups": [],
         "total_energy": 0.0, "total_cost": 0.0,
         "period_start": start, "period_end": end, "billing_mode": resolved_mode, **price_info,
     }
@@ -1720,7 +1801,7 @@ def _blank_component_summary(settings, group, mode=None, manual_year=None, manua
 def generate_combined_summary(settings, group, mode=None, manual_year=None, manual_month=None):
     """Eine Abrechnungsgruppe kann EVCC-Ladevorgänge und HA-Verbrauchssensoren gemeinsam enthalten."""
     include_evcc = bool(group.get("include_evcc", True))
-    ha_configured = bool(group.get("ha_sources", []))
+    ha_configured = any(item.get("ha_sources") for item in group.get("billing_groups", []))
     if not include_evcc and not ha_configured:
         raise ValueError("In dieser Abrechnungsgruppe sind noch keine Verbraucher konfiguriert.")
 
@@ -1747,7 +1828,8 @@ def generate_combined_summary(settings, group, mode=None, manual_year=None, manu
     price = float(price_info["price_eur_kwh"])
 
     total_energy = float(evcc.get("total_energy", 0) or 0) + float(ha.get("total_energy", 0) or 0)
-    total_cost = round(total_energy * price, 2)
+    # Gesamtbetrag aus den sichtbaren Teilsummen bilden, damit PDF-Zeilen und Endsumme centgenau übereinstimmen.
+    total_cost = round(float(evcc.get("total_cost", 0) or 0) + float(ha.get("total_cost", 0) or 0), 2)
 
     # Einheitliche Tabellenzeilen für den Template-Editor / {{ rows_html }}.
     combined_rows = []
@@ -1757,12 +1839,10 @@ def generate_combined_summary(settings, group, mode=None, manual_year=None, manu
             f"<td>{charge.get('date','')} {charge.get('start_time','')}-{charge.get('end_time','')}</td>"
             f"<td>{charge.get('energy_kwh_formatted','')}</td><td>{charge.get('cost_eur','')}</td><td>enthalten</td></tr>"
         )
-    for source in ha.get("ha_sources", []):
-        include = bool(source.get("include_in_total", True))
+    for item in ha.get("billing_groups", []):
         combined_rows.append(
-            f"<tr><td>Home Assistant</td><td>{source.get('label','')}</td><td>{source.get('entity_id','')}</td>"
-            f"<td>{source.get('energy_kwh_formatted','')}</td><td>{source.get('cost_formatted','')} €</td>"
-            f"<td>{'enthalten' if include else 'nur Detail'}</td></tr>"
+            f"<tr><td>Abrechnungsgruppe</td><td>{item.get('name','')}</td><td></td>"
+            f"<td>{item.get('total_energy_formatted','')}</td><td>{item.get('total_cost_eur','')}</td><td>enthalten</td></tr>"
         )
 
     return {
@@ -1774,6 +1854,7 @@ def generate_combined_summary(settings, group, mode=None, manual_year=None, manu
         "sessions": evcc.get("sessions", []),
         "vehicle_groups": evcc.get("vehicle_groups", []),
         "ha_sources": ha.get("ha_sources", []),
+        "billing_groups": ha.get("billing_groups", []),
         "evcc_total_energy": float(evcc.get("total_energy", 0) or 0),
         "evcc_total_cost": float(evcc.get("total_cost", 0) or 0),
         "ha_total_energy": float(ha.get("total_energy", 0) or 0),
@@ -1820,6 +1901,8 @@ def render_html(settings, group, mode=None, manual_year=None, manual_month=None)
         "sessions": summary["sessions"],
         "vehicle_groups": summary["vehicle_groups"],
         "ha_sources": summary.get("ha_sources", []),
+        "billing_groups": summary.get("billing_groups", []),
+        "sensor_groups": summary.get("billing_groups", []),
         "has_evcc": summary.get("has_evcc", False),
         "has_ha": summary.get("has_ha", False),
         "evcc_total_energy": format_de_number(summary.get("evcc_total_energy", 0)),
@@ -2037,10 +2120,11 @@ def groups_page():
         group["group_icon"] = request.form.get("group_icon", "auto").strip().lower()
         group["vehicles"] = [v for v in request.form.getlist("vehicles") if v.strip()]
         try:
-            raw_sources = json.loads(request.form.get("ha_sources_json", "[]") or "[]")
+            raw_billing_groups = json.loads(request.form.get("billing_groups_json", "[]") or "[]")
         except Exception:
-            raw_sources = []
-        group["ha_sources"] = [normalize_ha_source(src) for src in raw_sources if isinstance(src, dict)]
+            raw_billing_groups = []
+        group["billing_groups"] = [normalize_billing_group(item) for item in raw_billing_groups if isinstance(item, dict)]
+        group["ha_sources"] = [deepcopy(src) for item in group["billing_groups"] for src in item.get("ha_sources", [])]
         group["grid_price_override"] = request.form.get("grid_price_override","").strip()
         group["grid_price_mode"] = "bmf" if parse_bool(request.form.get("grid_price_bmf")) else "manual"
         group["sender_mode"] = request.form.get("sender_mode","default").strip()

@@ -3,13 +3,13 @@
 <section class="card">
   <h2>Abrechnung manuell erstellen</h2>
   {% if not settings.groups %}
-    <p>Bitte zuerst mindestens eine Gruppe anlegen.</p>
+    <p>Bitte zuerst mindestens eine Abrechnung anlegen.</p>
   {% else %}
     <form method="post" action="{{ ingress_path }}/report" class="stack">
-      <label><span>Gruppe</span>
+      <label><span>Abrechnung</span>
         <select name="group_id">
           {% for g in settings.groups %}
-          <option value="{{ g.id }}" {% if g.id == selected_group_id %}selected{% endif %}>{{ g.name }} · gemeinsame Verbraucherabrechnung</option>
+          <option value="{{ g.id }}" {% if g.id == selected_group_id %}selected{% endif %}>{{ g.name }}</option>
           {% endfor %}
         </select>
       </label>

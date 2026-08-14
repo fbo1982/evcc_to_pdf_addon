@@ -151,3 +151,16 @@ hr { border:0; border-top:1px solid rgba(122,166,232,.28); margin:18px 0; }
 .hero-brand-image { width:100%; max-width:520px; justify-self:end; border-radius:18px; }
 .eyebrow { display:inline-block; margin-bottom:10px; color:#8fdcff; text-transform:uppercase; letter-spacing:.12em; font-size:12px; font-weight:800; }
 @media (max-width:850px) { .hero-grid { grid-template-columns:1fr; } .hero-brand-image { justify-self:start; max-width:420px; } .hero-grid h2 { font-size:29px; } }
+
+/* v1.3.02 – beliebig viele benannte HA-Abrechnungsgruppen */
+.billing-group-picker { display:grid; grid-template-columns:minmax(150px,.9fr) minmax(170px,1.2fr) minmax(160px,.9fr) minmax(220px,1.6fr) auto; gap:12px; align-items:end; margin-top:14px; }
+.billing-group-picker button { height:52px; }
+.billing-groups-list { display:grid; gap:16px; margin-top:16px; }
+.billing-group-card { border:1px solid rgba(72,199,255,.34); border-radius:18px; padding:16px; background:rgba(3,18,50,.34); }
+.billing-group-head { display:grid; grid-template-columns:minmax(220px,1.6fr) auto auto; gap:12px; align-items:end; margin-bottom:12px; }
+.billing-group-name { margin:0; }
+.billing-group-meta { align-self:center; color:var(--muted); font-size:13px; white-space:nowrap; }
+.billing-group-actions { display:flex; gap:8px; align-items:center; justify-content:flex-end; flex-wrap:wrap; }
+.billing-group-actions button[disabled] { opacity:.35; cursor:not-allowed; }
+@media (max-width:1200px) { .billing-group-picker { grid-template-columns:1fr 1fr; } .billing-group-picker button { width:100%; } }
+@media (max-width:800px) { .billing-group-picker { grid-template-columns:1fr; } .billing-group-head { grid-template-columns:1fr; } .billing-group-actions { justify-content:flex-start; } }

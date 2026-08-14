@@ -2,6 +2,38 @@
 
 Alle relevanten Änderungen an **EVCC to PDF** werden hier versionsweise dokumentiert.
 
+## v1.3.02 – 14.08.2026
+
+### Beliebig viele Sensor-Abrechnungsgruppen
+- Innerhalb einer Abrechnung können jetzt beliebig viele frei benannte Home-Assistant-Sensorgruppen angelegt werden, z. B. **HomeOffice**, **Server** oder **Klimaanlage**.
+- Jeder Sensorgruppe können beliebig viele geeignete Energie-/Leistungssensoren zugewiesen werden.
+- Gruppenreihenfolge kann über Auf/Ab-Schaltflächen geändert werden und bestimmt die Reihenfolge im Standard-PDF.
+- Ein HA-Sensor kann über die Oberfläche nur einer Sensorgruppe zugeordnet werden, um versehentliche Mehrfachsummierung zu vermeiden.
+- Der bestehende Schalter **In Gruppensumme einrechnen** bleibt pro Sensor erhalten.
+
+### PDF-Transparenz
+- Home-Assistant-Verbrauch wird im Standard-PDF nicht mehr bis auf einzelne Shelly-/Entity-IDs aufgelöst.
+- Für HA erscheint nur **Gruppenname + Gruppenverbrauch + Strompreis + Gruppenbetrag**.
+- EVCC-Fahrzeuge bleiben bewusst einzeln sichtbar. Ihre einzelnen Ladevorgänge und Fahrzeug-Zwischensummen werden weiterhin vollständig aufgeführt.
+- Gesamtverbrauch und Gesamtkosten kombinieren Fahrzeugverbrauch und alle einbezogenen Sensorgruppen.
+
+### Einheitlicher Preis
+- Manueller oder automatischer Strompreis gilt weiterhin einmal für die komplette Abrechnung und damit identisch für Fahrzeuge und alle Sensorgruppen.
+- Bei manueller Preiswahl bleibt die Zeile **Preisermittlung** im Standard-PDF ausgeblendet.
+
+### Migration & Kompatibilität
+- Flache `ha_sources`-Konfigurationen aus v1.3.01 werden automatisch in eine benannte Sensor-Abrechnungsgruppe migriert.
+- `ha_sources` bleibt als flacher Template-Alias für bestehende eigene Templates erhalten.
+- Neue Template-Kontexte `billing_groups` und `sensor_groups`.
+- Das unveränderte v1.3.01-Standardtemplate wird automatisch auf die neue Gruppensummen-Darstellung migriert; bearbeitete Templates bleiben unangetastet.
+
+### Oberfläche & Dokumentation
+- Gruppenansicht trennt jetzt klar zwischen kompletter **Abrechnung**, einzelnen **Fahrzeugen** und benannten **Sensor-Abrechnungsgruppen**.
+- Sensorpicker behält Suche sowie Filter Alle / Energie / Leistung und den EVCC-Sensor-Ausschluss bei.
+- README, App-README, DOCS und Platzhalter-Dokumentation aktualisiert.
+- Neue `RELEASE_CHECKLIST.md`, damit Persistenz-, Migrations-, Template- und Testregeln bei Folgeversionen beibehalten werden.
+- Versionsnummer auf **v1.3.02** angehoben.
+
 ## v1.3.01 – 14.08.2026
 
 ### Gemeinsame Verbrauchergruppen
